@@ -231,7 +231,7 @@ if not df.empty:
     st.divider()
     st.subheader("📉 歷史紀錄")
     
-    # 【更新】依照你的要求，所有欄位都設為 "small"
+    # 一般分頁的設定 (英文欄位名)
     col_config_def = {
         "Date": st.column_config.Column("日期", width="small"),
         "Time": st.column_config.Column("時間", width="small"),
@@ -252,7 +252,8 @@ if not df.empty:
             stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
             stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
             stats.columns = ['日期', '總匙數', '總克數']
-            # 食量統計也全部統一為 small
+            
+            # 【重要修正】這裡特別針對中文欄位名稱設定 small
             st.dataframe(stats, use_container_width=True, hide_index=True, column_config={
                 "日期": st.column_config.Column(width="small"),
                 "總匙數": st.column_config.Column(width="small"),
