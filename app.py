@@ -7,7 +7,7 @@ import time
 import pytz
 
 # --- 設定 ---
-# 從 Secrets 讀取網址，確保安全
+# 從 Secrets 讀取網址
 SHEET_URL = st.secrets["private_sheet_url"]
 
 SPOON_TO_GRAM = 11  # 1匙 = 11克
@@ -79,7 +79,6 @@ with col_min:
 
 time_str = f"{hour_val}:{min_val}"
 
-# 【更新】將「備註」改為「其他」
 type_options = ["餵食", "餵藥", "體重", "排便", "其他"]
 record_type = st.radio("類型", type_options, horizontal=True)
 
@@ -137,12 +136,11 @@ if not df.empty:
     meds = []
     toilets = []
     weights = []
-    others_list = [] # 【新增】其他的列表
+    others_list = []
     
     for _, row in df_today.iterrows():
         t = row['Type']
         c = str(row['Content'])
-        # 顯示時加上備註說明，讓單日回顧更清楚
         note_suffix = f" ({row['Note']})" if row['Note'] else ""
         
         if t == "餵食":
@@ -151,12 +149,13 @@ if not df.empty:
         elif t == "餵藥": meds.append(f"{row['Time']} {c}{note_suffix}")
         elif t == "排便": toilets.append(f"{row['Time']} {c}{note_suffix}")
         elif t == "體重": weights.append(f"{c} kg")
-        # 【新增】相容舊的「備註」與新的「其他」
         elif t == "其他" or t == "備註": 
             others_list.append(f"{row['Time']} {c}{note_suffix}")
 
+    # 【介面美化修正】：確保每一項都有底框
     c1, c2 = st.columns(2)
     with c1:
+        # 食量 (藍色)
         food_msg = "(無)"
         if food_total > 0:
             grams = round(food_total * SPOON_TO_GRAM, 2)
@@ -164,22 +163,20 @@ if not df.empty:
         if food_others: food_msg += f" + {','.join(food_others)}"
         st.info(f"🍖 食量: {food_msg}")
         
+        # 用藥 (黃色)
         st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
 
     with c2:
+        # 排便 (綠色)
         st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
         
-        # 顯示體重，若無則顯示其他
-        if weights:
-            st.error(f"⚖️ 體重: {weights[0]}")
-        else:
-            st.write("⚖️ 體重: (無)")
+        # 體重 (紅色) - 即使是(無)也顯示紅框
+        weight_msg = weights[0] if weights else "(無)"
+        st.error(f"⚖️ 體重: {weight_msg}")
             
-        # 【新增】顯示其他事項
-        if others_list:
-            st.caption(f"📝 其他: {', '.join(others_list)}")
-        else:
-            st.caption("📝 其他: (無)")
+        # 其他 (藍色) - 即使是(無)也顯示藍框
+        others_msg = ", ".join(others_list) if others_list else "(無)"
+        st.info(f"📝 其他: {others_msg}")
 
     # ==========================================
     # 🔥 管理與修改
@@ -260,7 +257,6 @@ if not df.empty:
     st.divider()
     st.subheader("📉 歷史紀錄")
     
-    # 【更新】最後一個分頁改為「其他」
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
     
     with tab1:
@@ -290,8 +286,7 @@ if not df.empty:
     with tab5: # 用藥
         st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True)
 
-    with tab6: # 【新增】其他 (含舊的備註)
-        # 篩選 Type 是 "其他" 或 "備註" 的資料
+    with tab6: # 其他
         others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
         st.dataframe(others_filter, use_container_width=True, hide_index=True)
 
