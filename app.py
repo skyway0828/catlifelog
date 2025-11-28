@@ -8,7 +8,7 @@ import time
 # --- 設定 ---
 # 這裡稍後會教你怎麼在雲端設定，本地測試先用 secrets.toml
 SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-SHEET_URL = "你的_Google_Sheet_網址_貼在這裡" # ★請記得換成你的試算表網址
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1_OFWuxeJEkQfKOmLB6GMclQsUZNxfs3i7_kcqlhh6zY/edit?usp=sharing" # ★請記得換成你的試算表網址
 
 SPOON_TO_GRAM = 11  # 1匙 = 11克
 
