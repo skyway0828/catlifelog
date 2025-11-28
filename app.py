@@ -231,14 +231,13 @@ if not df.empty:
     st.divider()
     st.subheader("📉 歷史紀錄")
     
-    # 【更新】將 Date 的寬度從 None (Auto) 改為 "small"
-    # "small" 能保證顯示日期，同時不會像 "medium" 那麼寬
+    # 【更新】依照你的要求，所有欄位都設為 "small"
     col_config_def = {
         "Date": st.column_config.Column("日期", width="small"),
         "Time": st.column_config.Column("時間", width="small"),
         "Type": st.column_config.Column("類型", width="small"),
-        "Content": st.column_config.Column("內容/數值", width="medium"),
-        "Note": st.column_config.Column("備註", width="large")
+        "Content": st.column_config.Column("內容/數值", width="small"),
+        "Note": st.column_config.Column("備註", width="small")
     }
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
@@ -253,7 +252,7 @@ if not df.empty:
             stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
             stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
             stats.columns = ['日期', '總匙數', '總克數']
-            # 食量這裡的日期也設為 small，保持一致
+            # 食量統計也全部統一為 small
             st.dataframe(stats, use_container_width=True, hide_index=True, column_config={
                 "日期": st.column_config.Column(width="small"),
                 "總匙數": st.column_config.Column(width="small"),
