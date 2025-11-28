@@ -7,14 +7,15 @@ import time
 import pytz
 
 # --- 設定 ---
-# 請確認這裡已經換成你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1_OFWuxeJEkQfKOmLB6GMclQsUZNxfs3i7_kcqlhh6zY/edit?usp=sharing" 
+# 已套入您的專屬網址
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1_OFWuxeJEkQfKOmLB6GMclQsUZNxfs3i7_kcqlhh6zY/edit?usp=sharing"
 
 SPOON_TO_GRAM = 11  # 1匙 = 11克
 
 # --- 連接 Google Sheets 函式 ---
 def get_data():
     """連線並讀取資料"""
+    # 讀取 Streamlit Secrets
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
@@ -160,46 +161,35 @@ if not df.empty:
         st.error(f"⚖️ 體重: {weights[0] if weights else '(無)'}")
 
     # ==========================================
-    # 🔥 管理與修改 (已升級：可自訂載入筆數)
+    # 🔥 管理與修改 (可自訂載入筆數)
     # ==========================================
     st.divider()
     with st.expander("🛠️ 管理與修改 (點此展開)", expanded=False):
-        
-        # 新增：讓使用者自己決定要載入幾筆
         edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=5, max_value=1000, value=5, step=10)
         st.caption(f"目前顯示最近 {edit_limit} 筆。若要修改更早之前的紀錄，請將數字調大。")
         
-        # 依照設定的筆數載入
         recent_records = df_cat.head(edit_limit).copy()
-        
-        # 製作選單選項
         recent_records['Label'] = recent_records.apply(
             lambda x: f"{x['Date']} {x['Time']} | {x['Type']} | {x['Content']}", axis=1
         )
         
-        # 讓使用者選擇
         selected_label = st.selectbox("選擇要操作的項目:", recent_records['Label'].tolist())
         
         if selected_label:
-            # 找出選到的那一筆資料的原始內容
             target_row = recent_records[recent_records['Label'] == selected_label].iloc[0]
             
-            # --- 修改區域 ---
             col_edit_1, col_edit_2 = st.columns(2)
             with col_edit_1:
                 new_content_edit = st.text_input("修改內容/數值", value=target_row['Content'])
             with col_edit_2:
                 new_note_edit = st.text_input("修改備註", value=target_row['Note'])
             
-            # 操作按鈕
             col_btn_1, col_btn_2 = st.columns([1, 1])
             
-            # 刪除按鈕
             with col_btn_1:
                 if st.button("🗑️ 刪除此紀錄", type="primary"):
                     with st.spinner("正在刪除..."):
                         try:
-                            # 比對並刪除
                             row_to_delete = None
                             for i, record in enumerate(data):
                                 if (record['Name'] == current_cat and 
@@ -207,7 +197,6 @@ if not df.empty:
                                     str(record['Time']) == str(target_row['Time']) and 
                                     record['Type'] == target_row['Type'] and 
                                     str(record['Content']) == str(target_row['Content'])):
-                                    
                                     row_to_delete = i + 2
                                     break
                             
@@ -221,7 +210,6 @@ if not df.empty:
                         except Exception as e:
                             st.error(f"刪除失敗: {e}")
 
-            # 更新按鈕
             with col_btn_2:
                 if st.button("✏️ 確認修改"):
                     with st.spinner("正在更新..."):
@@ -233,7 +221,6 @@ if not df.empty:
                                     str(record['Time']) == str(target_row['Time']) and 
                                     record['Type'] == target_row['Type'] and 
                                     str(record['Content']) == str(target_row['Content'])):
-                                    
                                     row_to_update = i + 2
                                     break
                             
