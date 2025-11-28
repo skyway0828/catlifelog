@@ -8,7 +8,7 @@ import pytz
 
 # --- 設定 ---
 # 已套入您的專屬網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1_OFWuxeJEkQfKOmLB6GMclQsUZNxfs3i7_kcqlhh6zY/edit?usp=sharing"
+SHEET_URL = st.secrets["private_sheet_url"]
 
 SPOON_TO_GRAM = 11  # 1匙 = 11克
 
