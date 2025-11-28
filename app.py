@@ -231,13 +231,13 @@ if not df.empty:
     st.divider()
     st.subheader("📉 歷史紀錄")
     
-    # 【更新】定義欄位寬度設定 (讓日期不要被擠壓)
+    # 【修正】這裡將 width 設為 None (Auto)，就不會強制變寬了
     col_config_def = {
-        "Date": st.column_config.Column("日期", width="medium"),
-        "Time": st.column_config.Column("時間", width="small"),
-        "Type": st.column_config.Column("類型", width="small"),
-        "Content": st.column_config.Column("內容/數值", width="medium"),
-        "Note": st.column_config.Column("備註", width="large")
+        "Date": st.column_config.Column("日期", width=None), 
+        "Time": st.column_config.Column("時間", width=None),
+        "Type": st.column_config.Column("類型", width=None),
+        "Content": st.column_config.Column("內容/數值", width="medium"), # 內容稍微寬一點
+        "Note": st.column_config.Column("備註", width="large") # 備註最寬
     }
 
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
@@ -252,11 +252,11 @@ if not df.empty:
             stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
             stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
             stats.columns = ['日期', '總匙數', '總克數']
-            # 食量統計的欄位比較單純，直接設定即可
+            # 這裡也全部設為 None (Auto)
             st.dataframe(stats, use_container_width=True, hide_index=True, column_config={
-                "日期": st.column_config.Column(width="medium"),
-                "總匙數": st.column_config.Column(width="small"),
-                "總克數": st.column_config.Column(width="small")
+                "日期": st.column_config.Column(width=None),
+                "總匙數": st.column_config.Column(width=None),
+                "總克數": st.column_config.Column(width=None)
             })
         else:
             st.write("尚無資料")
@@ -276,7 +276,6 @@ if not df.empty:
 
     with tab6: # 其他
         others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
-        # 這裡套用上面的 col_config_def，就會強制日期欄位是 Medium 寬度
         st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_def)
 
 else:
