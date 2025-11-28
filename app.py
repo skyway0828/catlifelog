@@ -8,7 +8,7 @@ import pytz # 用來處理時區
 
 # --- 設定 ---
 # 請貼上你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1_OFWuxeJEkQfKOmLB6GMclQsUZNxfs3i7_kcqlhh6zY/edit?usp=sharing" 
 
 SPOON_TO_GRAM = 11  # 1匙 = 11克
 
