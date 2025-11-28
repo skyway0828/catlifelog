@@ -231,19 +231,11 @@ if not df.empty:
     st.divider()
     st.subheader("📉 歷史紀錄")
     
-    # 一般分頁的設定 (英文欄位名)
-    col_config_def = {
-        "Date": st.column_config.Column("日期", width="small"),
-        "Time": st.column_config.Column("時間", width="small"),
-        "Type": st.column_config.Column("類型", width="small"),
-        "Content": st.column_config.Column("內容/數值", width="small"),
-        "Note": st.column_config.Column("備註", width="small")
-    }
-
+    # 這裡沒有 column_config，讓 Streamlit 自己決定最佳寬度
     tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
     
     with tab1:
-        st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_def)
+        st.dataframe(df_display, use_container_width=True, hide_index=True)
 
     with tab2: # 食量
         df_food = df_cat[df_cat['Type'] == '餵食'].copy()
@@ -252,32 +244,26 @@ if not df.empty:
             stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
             stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
             stats.columns = ['日期', '總匙數', '總克數']
-            
-            # 【重要修正】這裡特別針對中文欄位名稱設定 small
-            st.dataframe(stats, use_container_width=True, hide_index=True, column_config={
-                "日期": st.column_config.Column(width="small"),
-                "總匙數": st.column_config.Column(width="small"),
-                "總克數": st.column_config.Column(width="small")
-            })
+            st.dataframe(stats, use_container_width=True, hide_index=True)
         else:
             st.write("尚無資料")
 
     with tab3: # 體重
-        st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_def)
+        st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True)
         if not df_display[df_display['Type']=='體重'].empty:
             chart_df = df_display[df_display['Type']=='體重'].copy()
             chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
             st.line_chart(chart_df, x='Date', y='WeightNum')
 
     with tab4: # 排便
-        st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_def)
+        st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True)
 
     with tab5: # 用藥
-        st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_def)
+        st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True)
 
     with tab6: # 其他
         others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
-        st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_def)
+        st.dataframe(others_filter, use_container_width=True, hide_index=True)
 
 else:
     st.write("目前資料庫是空的，請新增第一筆資料！")
