@@ -4,10 +4,10 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import time
-import pytz # 用來處理時區
+import pytz
 
 # --- 設定 ---
-# 請貼上你的 Google Sheet 網址
+# 請確認這裡已經換成你的 Google Sheet 網址
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1_OFWuxeJEkQfKOmLB6GMclQsUZNxfs3i7_kcqlhh6zY/edit?usp=sharing" 
 
 SPOON_TO_GRAM = 11  # 1匙 = 11克
@@ -39,7 +39,6 @@ except Exception as e:
 cat_list = df['Name'].unique().tolist() if not df.empty else []
 with st.sidebar:
     st.header("🐾 設定")
-    # 如果還沒有任何貓咪資料，提示新增
     if not cat_list:
         st.warning("目前沒有貓咪資料，請先新增！")
         selected_cat = None
@@ -51,12 +50,10 @@ with st.sidebar:
     if st.button("➕ 新增貓咪"):
         if new_cat and new_cat not in cat_list:
             selected_cat = new_cat
-            # 在介面上給個提示，實際寫入等下面按儲存時一起做
             st.success(f"準備新增 {new_cat}，請去右邊輸入第一筆紀錄！")
             time.sleep(1)
             st.rerun()
 
-# 如果使用者剛輸入新名字，優先使用新名字
 current_cat = new_cat if new_cat else selected_cat
 
 if not current_cat:
@@ -66,35 +63,23 @@ if not current_cat:
 # --- 主畫面：新增紀錄 ---
 st.subheader(f"📝 新增紀錄 ({current_cat})")
 
-# === 【重點修正】 時間處理與選單 ===
-# 1. 取得台灣時間
+# 時間處理 (GMT+8)
 tw_tz = pytz.timezone('Asia/Taipei')
 now_tw = datetime.now(tw_tz)
 
-# 2. 建立三個欄位：日期 | 時 | 分
 col_date, col_hour, col_min = st.columns([2, 1, 1])
-
 with col_date:
     date_input = st.date_input("日期", now_tw)
-
 with col_hour:
-    # 產生 00~23 的清單
     hours = [f"{i:02d}" for i in range(24)]
-    # 預設選中現在的小時
     hour_val = st.selectbox("時", hours, index=now_tw.hour)
-
 with col_min:
-    # 產生 00~59 的清單 (每一分鐘一格)
     mins = [f"{i:02d}" for i in range(60)]
-    # 預設選中現在的分鐘
     min_val = st.selectbox("分", mins, index=now_tw.minute)
 
-# 3. 組合時間字串
 time_str = f"{hour_val}:{min_val}"
-# =================================
 
 type_options = ["餵食", "餵藥", "體重", "排便", "備註"]
-# 使用 pills (膠囊按鈕) 或 radio，這裡維持 radio 比較穩定
 record_type = st.radio("類型", type_options, horizontal=True)
 
 help_text = ""
@@ -109,18 +94,15 @@ if st.button("💾 儲存紀錄", type="primary", use_container_width=True):
     if not content_val:
         st.warning("請輸入內容！")
     else:
-        # 防呆
         final_content = content_val.replace("。", ".").replace("．", ".")
-        
         row_data = [
             current_cat,
             date_input.strftime("%Y-%m-%d"),
-            time_str, # 使用我們組合好的 HH:MM
+            time_str,
             record_type,
             final_content,
             note_val
         ]
-        
         with st.spinner('正在寫入雲端...'):
             sheet.append_row(row_data)
             st.success("✅ 儲存成功！")
@@ -129,29 +111,24 @@ if st.button("💾 儲存紀錄", type="primary", use_container_width=True):
 
 # --- 資料處理區 ---
 if not df.empty:
-    # 篩選當前貓咪
     df_cat = df[df['Name'] == current_cat].copy()
     
-    # 【排序邏輯】：日期(新->舊) + 時間(新->舊)
-    # 將日期與時間合併成一個 datetime 物件來排序，確保跨日或同日時間準確
+    # 排序：新 -> 舊
     try:
         df_cat['DateTime'] = pd.to_datetime(df_cat['Date'] + ' ' + df_cat['Time'])
-        # ascending=False 代表降冪 (大->小，即 新->舊)
         df_cat = df_cat.sort_values(by='DateTime', ascending=False)
     except:
-        # 萬一舊資料格式有誤，就不排 DateTime，直接排 Date
         df_cat = df_cat.sort_values(by=['Date', 'Time'], ascending=[False, False])
     
     display_cols = ['Date', 'Time', 'Type', 'Content', 'Note']
     df_display = df_cat[display_cols].reset_index(drop=True)
 
-    # --- 統計資訊 (單日回顧) ---
+    # --- 統計資訊 ---
     target_date_str = date_input.strftime("%Y-%m-%d")
     st.divider()
     st.subheader(f"📊 單日回顧 ({target_date_str})")
     
     df_today = df_cat[df_cat['Date'] == target_date_str]
-    
     food_total = 0.0
     food_others = []
     meds = []
@@ -162,10 +139,8 @@ if not df.empty:
         t = row['Type']
         c = str(row['Content'])
         if t == "餵食":
-            try:
-                food_total += float(c)
-            except:
-                food_others.append(c)
+            try: food_total += float(c)
+            except: food_others.append(c)
         elif t == "餵藥": meds.append(f"{row['Time']} {c}")
         elif t == "排便": toilets.append(f"{row['Time']} {c}")
         elif t == "體重": weights.append(f"{c} kg")
@@ -176,15 +151,102 @@ if not df.empty:
         if food_total > 0:
             grams = round(food_total * SPOON_TO_GRAM, 2)
             food_msg = f"**{round(food_total, 3)} 匙** ({grams}g)"
-        if food_others:
-            food_msg += f" + {','.join(food_others)}"
+        if food_others: food_msg += f" + {','.join(food_others)}"
         st.info(f"🍖 食量: {food_msg}")
-        
         st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
 
     with c2:
         st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
         st.error(f"⚖️ 體重: {weights[0] if weights else '(無)'}")
+
+    # ==========================================
+    # 🔥 管理與修改 (已升級：可自訂載入筆數)
+    # ==========================================
+    st.divider()
+    with st.expander("🛠️ 管理與修改 (點此展開)", expanded=False):
+        
+        # 新增：讓使用者自己決定要載入幾筆
+        edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=5, max_value=1000, value=5, step=10)
+        st.caption(f"目前顯示最近 {edit_limit} 筆。若要修改更早之前的紀錄，請將數字調大。")
+        
+        # 依照設定的筆數載入
+        recent_records = df_cat.head(edit_limit).copy()
+        
+        # 製作選單選項
+        recent_records['Label'] = recent_records.apply(
+            lambda x: f"{x['Date']} {x['Time']} | {x['Type']} | {x['Content']}", axis=1
+        )
+        
+        # 讓使用者選擇
+        selected_label = st.selectbox("選擇要操作的項目:", recent_records['Label'].tolist())
+        
+        if selected_label:
+            # 找出選到的那一筆資料的原始內容
+            target_row = recent_records[recent_records['Label'] == selected_label].iloc[0]
+            
+            # --- 修改區域 ---
+            col_edit_1, col_edit_2 = st.columns(2)
+            with col_edit_1:
+                new_content_edit = st.text_input("修改內容/數值", value=target_row['Content'])
+            with col_edit_2:
+                new_note_edit = st.text_input("修改備註", value=target_row['Note'])
+            
+            # 操作按鈕
+            col_btn_1, col_btn_2 = st.columns([1, 1])
+            
+            # 刪除按鈕
+            with col_btn_1:
+                if st.button("🗑️ 刪除此紀錄", type="primary"):
+                    with st.spinner("正在刪除..."):
+                        try:
+                            # 比對並刪除
+                            row_to_delete = None
+                            for i, record in enumerate(data):
+                                if (record['Name'] == current_cat and 
+                                    record['Date'] == target_row['Date'] and 
+                                    str(record['Time']) == str(target_row['Time']) and 
+                                    record['Type'] == target_row['Type'] and 
+                                    str(record['Content']) == str(target_row['Content'])):
+                                    
+                                    row_to_delete = i + 2
+                                    break
+                            
+                            if row_to_delete:
+                                sheet.delete_rows(row_to_delete)
+                                st.success("已刪除！")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("找不到原始資料。")
+                        except Exception as e:
+                            st.error(f"刪除失敗: {e}")
+
+            # 更新按鈕
+            with col_btn_2:
+                if st.button("✏️ 確認修改"):
+                    with st.spinner("正在更新..."):
+                        try:
+                            row_to_update = None
+                            for i, record in enumerate(data):
+                                if (record['Name'] == current_cat and 
+                                    record['Date'] == target_row['Date'] and 
+                                    str(record['Time']) == str(target_row['Time']) and 
+                                    record['Type'] == target_row['Type'] and 
+                                    str(record['Content']) == str(target_row['Content'])):
+                                    
+                                    row_to_update = i + 2
+                                    break
+                            
+                            if row_to_update:
+                                sheet.update_cell(row_to_update, 5, new_content_edit)
+                                sheet.update_cell(row_to_update, 6, new_note_edit)
+                                st.success("更新成功！")
+                                time.sleep(1)
+                                st.rerun()
+                            else:
+                                st.error("找不到原始資料。")
+                        except Exception as e:
+                            st.error(f"更新失敗: {e}")
 
     # --- 歷史紀錄 (分頁) ---
     st.divider()
@@ -194,7 +256,6 @@ if not df.empty:
     
     with tab1:
         st.dataframe(df_display, use_container_width=True, hide_index=True)
-        st.caption("* 如需修改，請至 Google Sheet 操作")
 
     with tab2: # 食量
         df_food = df_cat[df_cat['Type'] == '餵食'].copy()
@@ -209,7 +270,6 @@ if not df.empty:
 
     with tab3: # 體重
         st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True)
-        # 簡單圖表
         if not df_display[df_display['Type']=='體重'].empty:
             chart_df = df_display[df_display['Type']=='體重'].copy()
             chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
