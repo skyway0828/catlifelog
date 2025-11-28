@@ -56,6 +56,34 @@ if not current_cat:
     st.info("👈 請先在左側新增貓咪")
     st.stop()
 
+# ... (上面是原本的側邊欄程式碼) ...
+
+with st.sidebar:
+    st.header("🐾 設定")
+    # ... (原本的選擇貓咪 & 新增貓咪) ...
+    
+    st.divider() # 分隔線
+    
+    # 🔥【新增】資料備份區
+    st.subheader("💾 資料備份")
+    if not df.empty:
+        # 將資料轉為 CSV 字串
+        csv_data = df.to_csv(index=False).encode('utf-8-sig')
+        
+        # 取得當下日期時間當作檔名
+        now_str = datetime.now().strftime("%Y%m%d")
+        file_name = f"貓咪日記備份_{now_str}.csv"
+        
+        st.download_button(
+            label="📥 下載所有紀錄 (Excel)",
+            data=csv_data,
+            file_name=file_name,
+            mime="text/csv"
+        )
+    else:
+        st.caption("尚無資料可備份")
+
+
 # --- 主畫面 ---
 st.subheader(f"🐾 {current_cat}")
 
