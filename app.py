@@ -7,7 +7,7 @@ import time
 import pytz
 
 # --- 設定 ---
-# 已套入您的專屬網址
+# 從 Secrets 讀取網址，確保安全
 SHEET_URL = st.secrets["private_sheet_url"]
 
 SPOON_TO_GRAM = 11  # 1匙 = 11克
@@ -15,7 +15,6 @@ SPOON_TO_GRAM = 11  # 1匙 = 11克
 # --- 連接 Google Sheets 函式 ---
 def get_data():
     """連線並讀取資料"""
-    # 讀取 Streamlit Secrets
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
@@ -80,16 +79,18 @@ with col_min:
 
 time_str = f"{hour_val}:{min_val}"
 
-type_options = ["餵食", "餵藥", "體重", "排便", "備註"]
+# 【更新】將「備註」改為「其他」
+type_options = ["餵食", "餵藥", "體重", "排便", "其他"]
 record_type = st.radio("類型", type_options, horizontal=True)
 
 help_text = ""
 if record_type == "餵食": help_text = "輸入湯匙數 (如 0.5)"
 elif record_type == "體重": help_text = "輸入公斤數 (如 5.2)"
 elif record_type == "餵藥": help_text = "輸入藥名 (如 抗生素)"
+elif record_type == "其他": help_text = "輸入標題 (如 剪指甲、吐毛)"
 
 content_val = st.text_input("內容 / 數值", placeholder=help_text)
-note_val = st.text_input("備註 (選填)")
+note_val = st.text_input("備註說明 (選填)")
 
 if st.button("💾 儲存紀錄", type="primary", use_container_width=True):
     if not content_val:
@@ -124,27 +125,35 @@ if not df.empty:
     display_cols = ['Date', 'Time', 'Type', 'Content', 'Note']
     df_display = df_cat[display_cols].reset_index(drop=True)
 
-    # --- 統計資訊 ---
+    # --- 統計資訊 (單日回顧) ---
     target_date_str = date_input.strftime("%Y-%m-%d")
     st.divider()
     st.subheader(f"📊 單日回顧 ({target_date_str})")
     
     df_today = df_cat[df_cat['Date'] == target_date_str]
+    
     food_total = 0.0
     food_others = []
     meds = []
     toilets = []
     weights = []
+    others_list = [] # 【新增】其他的列表
     
     for _, row in df_today.iterrows():
         t = row['Type']
         c = str(row['Content'])
+        # 顯示時加上備註說明，讓單日回顧更清楚
+        note_suffix = f" ({row['Note']})" if row['Note'] else ""
+        
         if t == "餵食":
             try: food_total += float(c)
             except: food_others.append(c)
-        elif t == "餵藥": meds.append(f"{row['Time']} {c}")
-        elif t == "排便": toilets.append(f"{row['Time']} {c}")
+        elif t == "餵藥": meds.append(f"{row['Time']} {c}{note_suffix}")
+        elif t == "排便": toilets.append(f"{row['Time']} {c}{note_suffix}")
         elif t == "體重": weights.append(f"{c} kg")
+        # 【新增】相容舊的「備註」與新的「其他」
+        elif t == "其他" or t == "備註": 
+            others_list.append(f"{row['Time']} {c}{note_suffix}")
 
     c1, c2 = st.columns(2)
     with c1:
@@ -154,19 +163,31 @@ if not df.empty:
             food_msg = f"**{round(food_total, 3)} 匙** ({grams}g)"
         if food_others: food_msg += f" + {','.join(food_others)}"
         st.info(f"🍖 食量: {food_msg}")
+        
         st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
 
     with c2:
         st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
-        st.error(f"⚖️ 體重: {weights[0] if weights else '(無)'}")
+        
+        # 顯示體重，若無則顯示其他
+        if weights:
+            st.error(f"⚖️ 體重: {weights[0]}")
+        else:
+            st.write("⚖️ 體重: (無)")
+            
+        # 【新增】顯示其他事項
+        if others_list:
+            st.caption(f"📝 其他: {', '.join(others_list)}")
+        else:
+            st.caption("📝 其他: (無)")
 
     # ==========================================
-    # 🔥 管理與修改 (可自訂載入筆數)
+    # 🔥 管理與修改
     # ==========================================
     st.divider()
     with st.expander("🛠️ 管理與修改 (點此展開)", expanded=False):
-        edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=5, max_value=1000, value=5, step=10)
-        st.caption(f"目前顯示最近 {edit_limit} 筆。若要修改更早之前的紀錄，請將數字調大。")
+        edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=10, max_value=1000, value=20, step=10)
+        st.caption(f"目前顯示最近 {edit_limit} 筆。")
         
         recent_records = df_cat.head(edit_limit).copy()
         recent_records['Label'] = recent_records.apply(
@@ -182,7 +203,7 @@ if not df.empty:
             with col_edit_1:
                 new_content_edit = st.text_input("修改內容/數值", value=target_row['Content'])
             with col_edit_2:
-                new_note_edit = st.text_input("修改備註", value=target_row['Note'])
+                new_note_edit = st.text_input("修改備註說明", value=target_row['Note'])
             
             col_btn_1, col_btn_2 = st.columns([1, 1])
             
@@ -239,7 +260,8 @@ if not df.empty:
     st.divider()
     st.subheader("📉 歷史紀錄")
     
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥"])
+    # 【更新】最後一個分頁改為「其他」
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
     
     with tab1:
         st.dataframe(df_display, use_container_width=True, hide_index=True)
@@ -267,6 +289,11 @@ if not df.empty:
 
     with tab5: # 用藥
         st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True)
+
+    with tab6: # 【新增】其他 (含舊的備註)
+        # 篩選 Type 是 "其他" 或 "備註" 的資料
+        others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
+        st.dataframe(others_filter, use_container_width=True, hide_index=True)
 
 else:
     st.write("目前資料庫是空的，請新增第一筆資料！")
