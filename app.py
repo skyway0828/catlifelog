@@ -23,9 +23,10 @@ def get_data():
     return sheet, data
 
 # --- 介面開始 ---
-st.set_page_config(page_title="🐱 貓咪生活日記", page_icon="🐾", layout="wide")
+st.set_page_config(page_title="貓咪生活日記", page_icon="🐾", layout="wide")
 
-st.title("🐈 貓咪生活日記 (雲端版)")
+# 【修改 1】標題簡化，拿掉 (雲端版)
+st.title("🐈 貓咪生活日記")
 
 # 嘗試連線
 try:
@@ -61,7 +62,8 @@ if not current_cat:
     st.stop()
 
 # --- 主畫面：新增紀錄 ---
-st.subheader(f"📝 新增紀錄 ({current_cat})")
+# 【修改 2】這裡直接顯示貓咪名字，看起來更像專屬頁面
+st.subheader(f"🐾 {current_cat}")
 
 # 時間處理 (GMT+8)
 tw_tz = pytz.timezone('Asia/Taipei')
@@ -80,7 +82,8 @@ with col_min:
 time_str = f"{hour_val}:{min_val}"
 
 type_options = ["餵食", "餵藥", "體重", "排便", "其他"]
-record_type = st.radio("類型", type_options, horizontal=True)
+record_type = st.radio("類型", type_options, horizontal=True, label_visibility="collapsed") 
+# label_visibility="collapsed" 可以把「類型」這兩個字藏起來，讓介面更乾淨
 
 help_text = ""
 if record_type == "餵食": help_text = "輸入湯匙數 (如 0.5)"
@@ -152,10 +155,9 @@ if not df.empty:
         elif t == "其他" or t == "備註": 
             others_list.append(f"{row['Time']} {c}{note_suffix}")
 
-    # 【介面美化修正】：確保每一項都有底框
     c1, c2 = st.columns(2)
     with c1:
-        # 食量 (藍色)
+        # 食量
         food_msg = "(無)"
         if food_total > 0:
             grams = round(food_total * SPOON_TO_GRAM, 2)
@@ -163,18 +165,18 @@ if not df.empty:
         if food_others: food_msg += f" + {','.join(food_others)}"
         st.info(f"🍖 食量: {food_msg}")
         
-        # 用藥 (黃色)
+        # 用藥
         st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
 
     with c2:
-        # 排便 (綠色)
+        # 排便
         st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
         
-        # 體重 (紅色) - 即使是(無)也顯示紅框
+        # 體重
         weight_msg = weights[0] if weights else "(無)"
         st.error(f"⚖️ 體重: {weight_msg}")
             
-        # 其他 (藍色) - 即使是(無)也顯示藍框
+        # 其他
         others_msg = ", ".join(others_list) if others_list else "(無)"
         st.info(f"📝 其他: {others_msg}")
 
