@@ -260,7 +260,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 1. 預設設定 (全部顯示)
+            # 1. 預設設定 (全部顯示 - Small)
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -269,18 +269,18 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 2. 【新增】隱藏類型的設定 (Type 設為 hidden=True)
+            # 2. 【修正】隱藏類型：將 "Type" 設為 None (正確寫法)
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
-                "Type": st.column_config.Column("類型", width="small", hidden=True), # 這裡隱藏
+                "Type": None, # 這樣才會正確隱藏
                 "Content": st.column_config.Column("內容/數值", width="small"),
                 "Note": st.column_config.Column("備註", width="small")
             }
 
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
             
-            with tab1: # 全部 (保留類型)
+            with tab1: # 全部
                 st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_default)
 
             with tab2: # 食量
@@ -298,8 +298,7 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab3: # 體重 (保留類型欄位，雖然都一樣，但體重比較寬裕，留著無妨，或可改成 no_type)
-                # 這裡維持預設，如果你也想隱藏，可以改用 col_config_no_type
+            with tab3: # 體重
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
