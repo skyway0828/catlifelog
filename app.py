@@ -25,9 +25,6 @@ def get_data():
 # --- 介面開始 ---
 st.set_page_config(page_title="貓咪生活日記", page_icon="🐾", layout="wide")
 
-# 定義時區 (提早定義，讓備份功能也能用)
-tw_tz = pytz.timezone('Asia/Taipei')
-
 # 嘗試連線
 try:
     sheet, data = get_data()
@@ -68,7 +65,7 @@ else:
         current_cat = selected_option
 
 # ==========================================
-# 🏠 顯示主畫面 (含備份功能)
+# 🏠 顯示主畫面 (照片模式 - 向右轉90度)
 # ==========================================
 if is_home:
     st.title("🐈 貓咪生活日記")
@@ -84,18 +81,19 @@ if is_home:
     else:
         st.info(f"請確認已將照片 `{HOME_IMAGE_PATH}` 上傳至 GitHub 的專案資料夾中。")
 
-    # 🔥【修改】備份按鈕移到這裡 (只有在主畫面時，側邊欄才會出現備份)
+    # --- 側邊欄備份功能 ---
     if not df.empty:
         with st.sidebar:
             st.divider()
-            st.subheader("💾 全檔資料備份")
-            st.caption("下載所有貓咪的完整紀錄")
+            st.subheader("💾 資料備份")
             csv_data = df.to_csv(index=False).encode('utf-8-sig')
-            now_str = datetime.now(tw_tz).strftime("%Y%m%d")
+            # 這裡需要定義時區，因為上面還沒定義
+            tw_tz_backup = pytz.timezone('Asia/Taipei')
+            now_str = datetime.now(tw_tz_backup).strftime("%Y%m%d")
             st.download_button(
-                label="📥 下載 Excel (CSV)",
+                label="📥 下載紀錄",
                 data=csv_data,
-                file_name=f"貓咪日記全檔_{now_str}.csv",
+                file_name=f"貓咪日記_{now_str}.csv",
                 mime="text/csv"
             )
 
@@ -105,6 +103,7 @@ if is_home:
 else:
     st.subheader(f"🐾 {current_cat}")
 
+    tw_tz = pytz.timezone('Asia/Taipei')
     now_tw = datetime.now(tw_tz)
 
     col_date, col_hour, col_min = st.columns([2, 1, 1])
@@ -277,7 +276,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 1. 預設設定
+            # 設定1: 預設
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -286,7 +285,7 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 2. 隱藏類型
+            # 設定2: 隱藏類型
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -307,11 +306,27 @@ else:
                     stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
                     stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
                     stats.columns = ['日期', '總匙數', '總克數']
-                    st.dataframe(stats, use_container_width=True, hide_index=True, column_config={
-                        "日期": st.column_config.Column(width="small"),
-                        "總匙數": st.column_config.Column(width="small"),
-                        "總克數": st.column_config.Column(width="small")
-                    })
+                    
+                    # 1. 顯示表格 (限制高度)
+                    st.dataframe(
+                        stats, 
+                        use_container_width=True, 
+                        hide_index=True, 
+                        height=700, # 【修改】加入固定高度，超過會自動變卷軸
+                        column_config={
+                            "日期": st.column_config.Column(width="small"),
+                            "總匙數": st.column_config.Column(width="small"),
+                            "總克數": st.column_config.Column(width="small")
+                        }
+                    )
+                    
+                    # 2. 顯示趨勢圖 (新功能)
+                    st.write("---")
+                    st.caption("📈 近期食量趨勢 (總克數)")
+                    # 將資料依照日期排序 (舊->新) 才能畫出正確的時間軸
+                    chart_data = stats.sort_values('日期', ascending=True).set_index('日期')
+                    st.line_chart(chart_data['總克數'], color="#FF6347") # 番茄紅的線條
+                    
                 else:
                     st.write("尚無資料")
 
