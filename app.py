@@ -13,11 +13,20 @@ SHEET_URL = st.secrets["private_sheet_url"]
 SPOON_TO_GRAM = 11  # 1匙 = 11克
 HOME_IMAGE_PATH = "home_cat.jpg" # 照片檔名
 
-# --- 連接 Google Sheets 函式 ---
-def get_data():
+# --- 【優化重點】連接 Google Sheets 函式 ---
+# 加入 @st.cache_resource 裝飾器
+# 這表示：這個連線動作只做一次，之後就記住連線狀態，不用每次都重新登入 Google
+@st.cache_resource
+def init_connection():
+    """建立與 Google Sheets 的連線 (只執行一次)"""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
+    return client
+
+# 讀取資料的函式 (這個不快取，確保資料是最新的，但因為連線已建立，速度會變快)
+def get_data():
+    client = init_connection()
     sheet = client.open_by_url(SHEET_URL).sheet1
     data = sheet.get_all_records()
     return sheet, data
@@ -30,7 +39,9 @@ try:
     sheet, data = get_data()
     df = pd.DataFrame(data)
 except Exception as e:
-    st.error(f"資料庫連線失敗，請檢查 Secrets 設定。\n錯誤訊息: {e}")
+    # 這裡加入清除快取的機制，萬一連線真的斷了，讓它下次重連
+    st.cache_resource.clear()
+    st.error(f"連線逾時，請重新整理網頁。\n錯誤訊息: {e}")
     st.stop()
 
 # --- 側邊欄 ---
@@ -72,7 +83,7 @@ if is_home:
     else:
         st.info(f"請確認已將照片 `{HOME_IMAGE_PATH}` 上傳至 GitHub 的專案資料夾中。")
 
-    # 【修改】新增貓咪功能移到這裡 (主畫面專用)
+    # 新增貓咪功能
     with st.sidebar:
         st.divider()
         with st.expander("➕ 新增其他貓咪"):
@@ -277,7 +288,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 設定1: 預設
+            # V34 的設定 (餵食紀錄、食量統計、體重在右邊)
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -286,7 +297,6 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 設定2: 隱藏類型 (用於 餵食紀錄/排便/用藥/其他)
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -295,28 +305,27 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 【修改】調整 Tab 順序
-            tab_all, tab_feed_log, tab_toilet, tab_med, tab_other, tab_food_stats, tab_weight = st.tabs(
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
                 ["全部", "餵食紀錄", "排便", "用藥", "其他", "食量統計", "體重"]
             )
             
-            with tab_all: # 1. 全部
+            with tab1: # 全部
                 st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_default)
 
-            with tab_feed_log: # 2. 【新增】餵食紀錄 (流水帳)
+            with tab2: # 餵食紀錄 (流水帳)
                 st.dataframe(df_display[df_display['Type']=='餵食'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab_toilet: # 3. 排便
+            with tab3: # 排便
                 st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab_med: # 4. 用藥
+            with tab4: # 用藥
                 st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab_other: # 5. 其他
+            with tab5: # 其他
                 others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
                 st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab_food_stats: # 6. 食量統計 (圖表)
+            with tab6: # 食量統計 (圖表)
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
                 if not df_food.empty:
                     df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
@@ -342,7 +351,7 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab_weight: # 7. 體重 (移到最右邊)
+            with tab7: # 體重
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
