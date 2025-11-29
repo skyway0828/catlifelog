@@ -137,7 +137,6 @@ else:
     if not df.empty:
         df_cat = df[df['Name'] == current_cat].copy()
         
-        # 1. 如果該貓咪有資料
         if not df_cat.empty:
             try:
                 df_cat['DateTime'] = pd.to_datetime(df_cat['Date'] + ' ' + df_cat['Time'])
@@ -261,8 +260,8 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 使用 V20 經典設定 (無強制寬度，讓手機自動適應)
-            col_config_def = {
+            # 1. 預設設定 (全部顯示)
+            col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
                 "Type": st.column_config.Column("類型", width="small"),
@@ -270,10 +269,19 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
+            # 2. 【新增】隱藏類型的設定 (Type 設為 hidden=True)
+            col_config_no_type = {
+                "Date": st.column_config.Column("日期", width="small"),
+                "Time": st.column_config.Column("時間", width="small"),
+                "Type": st.column_config.Column("類型", width="small", hidden=True), # 這裡隱藏
+                "Content": st.column_config.Column("內容/數值", width="small"),
+                "Note": st.column_config.Column("備註", width="small")
+            }
+
             tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
             
-            with tab1:
-                st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_def)
+            with tab1: # 全部 (保留類型)
+                st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_default)
 
             with tab2: # 食量
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
@@ -290,22 +298,23 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab3: # 體重
-                st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_def)
+            with tab3: # 體重 (保留類型欄位，雖然都一樣，但體重比較寬裕，留著無妨，或可改成 no_type)
+                # 這裡維持預設，如果你也想隱藏，可以改用 col_config_no_type
+                st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
                     chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
                     st.line_chart(chart_df, x='Date', y='WeightNum')
 
-            with tab4: # 排便
-                st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_def)
+            with tab4: # 排便 (隱藏類型)
+                st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab5: # 用藥
-                st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_def)
+            with tab5: # 用藥 (隱藏類型)
+                st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab6: # 其他
+            with tab6: # 其他 (隱藏類型)
                 others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
-                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_def)
+                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
             # --- 側邊欄備份功能 ---
             with st.sidebar:
@@ -320,7 +329,6 @@ else:
                     mime="text/csv"
                 )
         
-        # 2. 如果該貓咪剛新增，還沒有資料
         else:
             st.info("這位主子還沒有紀錄喔，趕快輸入第一筆吧！")
 
