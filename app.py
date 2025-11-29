@@ -6,7 +6,7 @@ from datetime import datetime
 import time
 import pytz
 import os
-from PIL import Image # 引入圖片處理工具
+from PIL import Image
 
 # --- 設定 ---
 SHEET_URL = st.secrets["private_sheet_url"]
@@ -72,13 +72,12 @@ if is_home:
     st.write("### Welcome Home! 🐾")
     
     if os.path.exists(HOME_IMAGE_PATH):
-        # 讀取圖片
-        image = Image.open(HOME_IMAGE_PATH)
-        # 向右旋轉 90 度 (rotate 參數是逆時針，所以 -90 就是順時針/向右)
-        # expand=True 是為了確保旋轉後照片不會被裁切
-        rotated_image = image.rotate(-90, expand=True)
-        
-        st.image(rotated_image, use_container_width=True, caption="我們這一家 ❤️")
+        try:
+            image = Image.open(HOME_IMAGE_PATH)
+            rotated_image = image.rotate(-90, expand=True)
+            st.image(rotated_image, use_container_width=True, caption="我們這一家 ❤️")
+        except Exception as e:
+            st.error(f"圖片讀取失敗: {e}")
     else:
         st.info(f"請確認已將照片 `{HOME_IMAGE_PATH}` 上傳至 GitHub 的專案資料夾中。")
 
@@ -138,186 +137,192 @@ else:
     if not df.empty:
         df_cat = df[df['Name'] == current_cat].copy()
         
-        try:
-            df_cat['DateTime'] = pd.to_datetime(df_cat['Date'] + ' ' + df_cat['Time'])
-            df_cat = df_cat.sort_values(by='DateTime', ascending=False)
-        except:
-            df_cat = df_cat.sort_values(by=['Date', 'Time'], ascending=[False, False])
-        
-        display_cols = ['Date', 'Time', 'Type', 'Content', 'Note']
-        df_display = df_cat[display_cols].reset_index(drop=True)
-
-        # --- 單日回顧 ---
-        target_date_str = date_input.strftime("%Y-%m-%d")
-        st.divider()
-        st.subheader(f"📊 單日回顧 ({target_date_str})")
-        
-        df_today = df_cat[df_cat['Date'] == target_date_str]
-        food_total = 0.0
-        food_others = []
-        meds = []
-        toilets = []
-        weights = []
-        others_list = []
-        
-        for _, row in df_today.iterrows():
-            t = row['Type']
-            c = str(row['Content'])
-            note_suffix = f" ({row['Note']})" if row['Note'] else ""
+        # 1. 如果該貓咪有資料
+        if not df_cat.empty:
+            try:
+                df_cat['DateTime'] = pd.to_datetime(df_cat['Date'] + ' ' + df_cat['Time'])
+                df_cat = df_cat.sort_values(by='DateTime', ascending=False)
+            except:
+                df_cat = df_cat.sort_values(by=['Date', 'Time'], ascending=[False, False])
             
-            if t == "餵食":
-                try: food_total += float(c)
-                except: food_others.append(c)
-            elif t == "餵藥": meds.append(f"{row['Time']} {c}{note_suffix}")
-            elif t == "排便": toilets.append(f"{row['Time']} {c}{note_suffix}")
-            elif t == "體重": weights.append(f"{c} kg")
-            elif t == "其他" or t == "備註": 
-                others_list.append(f"{row['Time']} {c}{note_suffix}")
+            display_cols = ['Date', 'Time', 'Type', 'Content', 'Note']
+            df_display = df_cat[display_cols].reset_index(drop=True)
 
-        c1, c2 = st.columns(2)
-        with c1:
-            food_msg = "(無)"
-            if food_total > 0:
-                grams = round(food_total * SPOON_TO_GRAM, 2)
-                food_msg = f"**{round(food_total, 3)} 匙** ({grams}g)"
-            if food_others: food_msg += f" + {','.join(food_others)}"
-            st.info(f"🍖 食量: {food_msg}")
-            st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
-
-        with c2:
-            st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
-            weight_msg = weights[0] if weights else "(無)"
-            st.error(f"⚖️ 體重: {weight_msg}")
-            others_msg = ", ".join(others_list) if others_list else "(無)"
-            st.info(f"📝 其他: {others_msg}")
-
-        # --- 管理與修改 ---
-        st.divider()
-        with st.expander("🛠️ 管理與修改 (點此展開)", expanded=False):
-            edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=10, max_value=1000, value=20, step=10)
-            st.caption(f"目前顯示最近 {edit_limit} 筆。")
-            
-            recent_records = df_cat.head(edit_limit).copy()
-            recent_records['Label'] = recent_records.apply(
-                lambda x: f"{x['Date']} {x['Time']} | {x['Type']} | {x['Content']}", axis=1
-            )
-            
-            selected_label = st.selectbox("選擇要操作的項目:", recent_records['Label'].tolist())
-            
-            if selected_label:
-                target_row = recent_records[recent_records['Label'] == selected_label].iloc[0]
-                col_edit_1, col_edit_2 = st.columns(2)
-                with col_edit_1:
-                    new_content_edit = st.text_input("修改內容/數值", value=target_row['Content'])
-                with col_edit_2:
-                    new_note_edit = st.text_input("修改備註說明", value=target_row['Note'])
-                
-                col_btn_1, col_btn_2 = st.columns([1, 1])
-                with col_btn_1:
-                    if st.button("🗑️ 刪除此紀錄", type="primary"):
-                        with st.spinner("正在刪除..."):
-                            try:
-                                row_to_delete = None
-                                for i, record in enumerate(data):
-                                    if (record['Name'] == current_cat and 
-                                        record['Date'] == target_row['Date'] and 
-                                        str(record['Time']) == str(target_row['Time']) and 
-                                        record['Type'] == target_row['Type'] and 
-                                        str(record['Content']) == str(target_row['Content'])):
-                                        row_to_delete = i + 2
-                                        break
-                                if row_to_delete:
-                                    sheet.delete_rows(row_to_delete)
-                                    st.success("已刪除！")
-                                    time.sleep(1)
-                                    st.rerun()
-                                else: st.error("找不到原始資料。")
-                            except Exception as e: st.error(f"刪除失敗: {e}")
-
-                with col_btn_2:
-                    if st.button("✏️ 確認修改"):
-                        with st.spinner("正在更新..."):
-                            try:
-                                row_to_update = None
-                                for i, record in enumerate(data):
-                                    if (record['Name'] == current_cat and 
-                                        record['Date'] == target_row['Date'] and 
-                                        str(record['Time']) == str(target_row['Time']) and 
-                                        record['Type'] == target_row['Type'] and 
-                                        str(record['Content']) == str(target_row['Content'])):
-                                        row_to_update = i + 2
-                                        break
-                                if row_to_update:
-                                    sheet.update_cell(row_to_update, 5, new_content_edit)
-                                    sheet.update_cell(row_to_update, 6, new_note_edit)
-                                    st.success("更新成功！")
-                                    time.sleep(1)
-                                    st.rerun()
-                                else: st.error("找不到原始資料。")
-                            except Exception as e: st.error(f"更新失敗: {e}")
-
-        # --- 歷史紀錄 (分頁) ---
-        st.divider()
-        st.subheader("📉 歷史紀錄")
-        
-        # 使用 V20 經典設定 (無強制寬度，讓手機自動適應)
-        col_config_def = {
-            "Date": st.column_config.Column("日期", width="small"),
-            "Time": st.column_config.Column("時間", width="small"),
-            "Type": st.column_config.Column("類型", width="small"),
-            "Content": st.column_config.Column("內容/數值", width="small"),
-            "Note": st.column_config.Column("備註", width="small")
-        }
-
-        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
-        
-        with tab1:
-            st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_def)
-
-        with tab2: # 食量
-            df_food = df_cat[df_cat['Type'] == '餵食'].copy()
-            if not df_food.empty:
-                df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
-                stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
-                stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
-                stats.columns = ['日期', '總匙數', '總克數']
-                st.dataframe(stats, use_container_width=True, hide_index=True, column_config={
-                    "日期": st.column_config.Column(width="small"),
-                    "總匙數": st.column_config.Column(width="small"),
-                    "總克數": st.column_config.Column(width="small")
-                })
-            else:
-                st.write("尚無資料")
-
-        with tab3: # 體重
-            st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_def)
-            if not df_display[df_display['Type']=='體重'].empty:
-                chart_df = df_display[df_display['Type']=='體重'].copy()
-                chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
-                st.line_chart(chart_df, x='Date', y='WeightNum')
-
-        with tab4: # 排便
-            st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_def)
-
-        with tab5: # 用藥
-            st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_def)
-
-        with tab6: # 其他
-            others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
-            st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_def)
-
-        # --- 側邊欄備份功能 ---
-        with st.sidebar:
+            # --- 單日回顧 ---
+            target_date_str = date_input.strftime("%Y-%m-%d")
             st.divider()
-            st.subheader("💾 資料備份")
-            csv_data = df.to_csv(index=False).encode('utf-8-sig')
-            now_str = datetime.now(tw_tz).strftime("%Y%m%d")
-            st.download_button(
-                label="📥 下載紀錄",
-                data=csv_data,
-                file_name=f"貓咪日記_{now_str}.csv",
-                mime="text/csv"
-            )
+            st.subheader(f"📊 單日回顧 ({target_date_str})")
+            
+            df_today = df_cat[df_cat['Date'] == target_date_str]
+            food_total = 0.0
+            food_others = []
+            meds = []
+            toilets = []
+            weights = []
+            others_list = []
+            
+            for _, row in df_today.iterrows():
+                t = row['Type']
+                c = str(row['Content'])
+                note_suffix = f" ({row['Note']})" if row['Note'] else ""
+                
+                if t == "餵食":
+                    try: food_total += float(c)
+                    except: food_others.append(c)
+                elif t == "餵藥": meds.append(f"{row['Time']} {c}{note_suffix}")
+                elif t == "排便": toilets.append(f"{row['Time']} {c}{note_suffix}")
+                elif t == "體重": weights.append(f"{c} kg")
+                elif t == "其他" or t == "備註": 
+                    others_list.append(f"{row['Time']} {c}{note_suffix}")
 
-else:
-    st.write("目前資料庫是空的，請新增第一筆資料！")
+            c1, c2 = st.columns(2)
+            with c1:
+                food_msg = "(無)"
+                if food_total > 0:
+                    grams = round(food_total * SPOON_TO_GRAM, 2)
+                    food_msg = f"**{round(food_total, 3)} 匙** ({grams}g)"
+                if food_others: food_msg += f" + {','.join(food_others)}"
+                st.info(f"🍖 食量: {food_msg}")
+                st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
+
+            with c2:
+                st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
+                weight_msg = weights[0] if weights else "(無)"
+                st.error(f"⚖️ 體重: {weight_msg}")
+                others_msg = ", ".join(others_list) if others_list else "(無)"
+                st.info(f"📝 其他: {others_msg}")
+
+            # --- 管理與修改 ---
+            st.divider()
+            with st.expander("🛠️ 管理與修改 (點此展開)", expanded=False):
+                edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=10, max_value=1000, value=20, step=10)
+                st.caption(f"目前顯示最近 {edit_limit} 筆。")
+                
+                recent_records = df_cat.head(edit_limit).copy()
+                recent_records['Label'] = recent_records.apply(
+                    lambda x: f"{x['Date']} {x['Time']} | {x['Type']} | {x['Content']}", axis=1
+                )
+                
+                selected_label = st.selectbox("選擇要操作的項目:", recent_records['Label'].tolist())
+                
+                if selected_label:
+                    target_row = recent_records[recent_records['Label'] == selected_label].iloc[0]
+                    col_edit_1, col_edit_2 = st.columns(2)
+                    with col_edit_1:
+                        new_content_edit = st.text_input("修改內容/數值", value=target_row['Content'])
+                    with col_edit_2:
+                        new_note_edit = st.text_input("修改備註說明", value=target_row['Note'])
+                    
+                    col_btn_1, col_btn_2 = st.columns([1, 1])
+                    with col_btn_1:
+                        if st.button("🗑️ 刪除此紀錄", type="primary"):
+                            with st.spinner("正在刪除..."):
+                                try:
+                                    row_to_delete = None
+                                    for i, record in enumerate(data):
+                                        if (record['Name'] == current_cat and 
+                                            record['Date'] == target_row['Date'] and 
+                                            str(record['Time']) == str(target_row['Time']) and 
+                                            record['Type'] == target_row['Type'] and 
+                                            str(record['Content']) == str(target_row['Content'])):
+                                            row_to_delete = i + 2
+                                            break
+                                    if row_to_delete:
+                                        sheet.delete_rows(row_to_delete)
+                                        st.success("已刪除！")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: st.error("找不到原始資料。")
+                                except Exception as e: st.error(f"刪除失敗: {e}")
+
+                    with col_btn_2:
+                        if st.button("✏️ 確認修改"):
+                            with st.spinner("正在更新..."):
+                                try:
+                                    row_to_update = None
+                                    for i, record in enumerate(data):
+                                        if (record['Name'] == current_cat and 
+                                            record['Date'] == target_row['Date'] and 
+                                            str(record['Time']) == str(target_row['Time']) and 
+                                            record['Type'] == target_row['Type'] and 
+                                            str(record['Content']) == str(target_row['Content'])):
+                                            row_to_update = i + 2
+                                            break
+                                    if row_to_update:
+                                        sheet.update_cell(row_to_update, 5, new_content_edit)
+                                        sheet.update_cell(row_to_update, 6, new_note_edit)
+                                        st.success("更新成功！")
+                                        time.sleep(1)
+                                        st.rerun()
+                                    else: st.error("找不到原始資料。")
+                                except Exception as e: st.error(f"更新失敗: {e}")
+
+            # --- 歷史紀錄 (分頁) ---
+            st.divider()
+            st.subheader("📉 歷史紀錄")
+            
+            # 使用 V20 經典設定 (無強制寬度，讓手機自動適應)
+            col_config_def = {
+                "Date": st.column_config.Column("日期", width="small"),
+                "Time": st.column_config.Column("時間", width="small"),
+                "Type": st.column_config.Column("類型", width="small"),
+                "Content": st.column_config.Column("內容/數值", width="small"),
+                "Note": st.column_config.Column("備註", width="small")
+            }
+
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
+            
+            with tab1:
+                st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_def)
+
+            with tab2: # 食量
+                df_food = df_cat[df_cat['Type'] == '餵食'].copy()
+                if not df_food.empty:
+                    df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
+                    stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
+                    stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
+                    stats.columns = ['日期', '總匙數', '總克數']
+                    st.dataframe(stats, use_container_width=True, hide_index=True, column_config={
+                        "日期": st.column_config.Column(width="small"),
+                        "總匙數": st.column_config.Column(width="small"),
+                        "總克數": st.column_config.Column(width="small")
+                    })
+                else:
+                    st.write("尚無資料")
+
+            with tab3: # 體重
+                st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_def)
+                if not df_display[df_display['Type']=='體重'].empty:
+                    chart_df = df_display[df_display['Type']=='體重'].copy()
+                    chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
+                    st.line_chart(chart_df, x='Date', y='WeightNum')
+
+            with tab4: # 排便
+                st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_def)
+
+            with tab5: # 用藥
+                st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_def)
+
+            with tab6: # 其他
+                others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
+                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_def)
+
+            # --- 側邊欄備份功能 ---
+            with st.sidebar:
+                st.divider()
+                st.subheader("💾 資料備份")
+                csv_data = df.to_csv(index=False).encode('utf-8-sig')
+                now_str = datetime.now(tw_tz).strftime("%Y%m%d")
+                st.download_button(
+                    label="📥 下載紀錄",
+                    data=csv_data,
+                    file_name=f"貓咪日記_{now_str}.csv",
+                    mime="text/csv"
+                )
+        
+        # 2. 如果該貓咪剛新增，還沒有資料
+        else:
+            st.info("這位主子還沒有紀錄喔，趕快輸入第一筆吧！")
+
+    else:
+        st.write("目前資料庫是空的，請新增第一筆資料！")
