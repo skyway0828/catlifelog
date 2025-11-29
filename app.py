@@ -25,6 +25,9 @@ def get_data():
 # --- 介面開始 ---
 st.set_page_config(page_title="貓咪生活日記", page_icon="🐾", layout="wide")
 
+# 定義時區 (提早定義，讓備份功能也能用)
+tw_tz = pytz.timezone('Asia/Taipei')
+
 # 嘗試連線
 try:
     sheet, data = get_data()
@@ -65,7 +68,7 @@ else:
         current_cat = selected_option
 
 # ==========================================
-# 🏠 顯示主畫面 (照片模式 - 向右轉90度)
+# 🏠 顯示主畫面 (含備份功能)
 # ==========================================
 if is_home:
     st.title("🐈 貓咪生活日記")
@@ -81,13 +84,27 @@ if is_home:
     else:
         st.info(f"請確認已將照片 `{HOME_IMAGE_PATH}` 上傳至 GitHub 的專案資料夾中。")
 
+    # 🔥【修改】備份按鈕移到這裡 (只有在主畫面時，側邊欄才會出現備份)
+    if not df.empty:
+        with st.sidebar:
+            st.divider()
+            st.subheader("💾 全檔資料備份")
+            st.caption("下載所有貓咪的完整紀錄")
+            csv_data = df.to_csv(index=False).encode('utf-8-sig')
+            now_str = datetime.now(tw_tz).strftime("%Y%m%d")
+            st.download_button(
+                label="📥 下載 Excel (CSV)",
+                data=csv_data,
+                file_name=f"貓咪日記全檔_{now_str}.csv",
+                mime="text/csv"
+            )
+
 # ==========================================
 # 🐾 顯示貓咪紀錄介面
 # ==========================================
 else:
     st.subheader(f"🐾 {current_cat}")
 
-    tw_tz = pytz.timezone('Asia/Taipei')
     now_tw = datetime.now(tw_tz)
 
     col_date, col_hour, col_min = st.columns([2, 1, 1])
@@ -260,7 +277,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 1. 預設設定 (全部顯示 - Small)
+            # 1. 預設設定
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -269,11 +286,11 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 2. 【修正】隱藏類型：將 "Type" 設為 None (正確寫法)
+            # 2. 隱藏類型
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
-                "Type": None, # 這樣才會正確隱藏
+                "Type": None,
                 "Content": st.column_config.Column("內容/數值", width="small"),
                 "Note": st.column_config.Column("備註", width="small")
             }
@@ -305,28 +322,15 @@ else:
                     chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
                     st.line_chart(chart_df, x='Date', y='WeightNum')
 
-            with tab4: # 排便 (隱藏類型)
+            with tab4: # 排便
                 st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab5: # 用藥 (隱藏類型)
+            with tab5: # 用藥
                 st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab6: # 其他 (隱藏類型)
+            with tab6: # 其他
                 others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
                 st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
-
-            # --- 側邊欄備份功能 ---
-            with st.sidebar:
-                st.divider()
-                st.subheader("💾 資料備份")
-                csv_data = df.to_csv(index=False).encode('utf-8-sig')
-                now_str = datetime.now(tw_tz).strftime("%Y%m%d")
-                st.download_button(
-                    label="📥 下載紀錄",
-                    data=csv_data,
-                    file_name=f"貓咪日記_{now_str}.csv",
-                    mime="text/csv"
-                )
         
         else:
             st.info("這位主子還沒有紀錄喔，趕快輸入第一筆吧！")
