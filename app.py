@@ -87,7 +87,6 @@ if is_home:
             st.divider()
             st.subheader("💾 資料備份")
             csv_data = df.to_csv(index=False).encode('utf-8-sig')
-            # 這裡需要定義時區，因為上面還沒定義
             tw_tz_backup = pytz.timezone('Asia/Taipei')
             now_str = datetime.now(tw_tz_backup).strftime("%Y%m%d")
             st.download_button(
@@ -303,16 +302,17 @@ else:
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
                 if not df_food.empty:
                     df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
+                    # 統計資料
                     stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
                     stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
                     stats.columns = ['日期', '總匙數', '總克數']
                     
-                    # 1. 顯示表格 (限制高度)
+                    # 1. 表格：限制高度 (約顯示 10 筆)，並套用 Small 寬度
                     st.dataframe(
                         stats, 
                         use_container_width=True, 
                         hide_index=True, 
-                        height=700, # 【修改】加入固定高度，超過會自動變卷軸
+                        height=400, # 高度限制
                         column_config={
                             "日期": st.column_config.Column(width="small"),
                             "總匙數": st.column_config.Column(width="small"),
@@ -320,12 +320,21 @@ else:
                         }
                     )
                     
-                    # 2. 顯示趨勢圖 (新功能)
+                    # 2. 圖表：橫向長條圖 (日期 Y，克數 X)，顯示最近 20 筆
                     st.write("---")
-                    st.caption("📈 近期食量趨勢 (總克數)")
-                    # 將資料依照日期排序 (舊->新) 才能畫出正確的時間軸
-                    chart_data = stats.sort_values('日期', ascending=True).set_index('日期')
-                    st.line_chart(chart_data['總克數'], color="#FF6347") # 番茄紅的線條
+                    st.caption("📊 近 20 天食量統計 (日期 Y軸 / 總克數 X軸)")
+                    
+                    # 取前 20 筆 (因為 stats 已經是日期從新到舊排序，所以 head(20) 就是最新的 20 天)
+                    chart_data = stats.head(20)
+                    
+                    # 畫圖：horizontal=True 會讓 X/Y 軸互換 (數值變 X 軸，類別變 Y 軸)
+                    st.bar_chart(
+                        chart_data, 
+                        x="總克數", 
+                        y="日期", 
+                        color="#FF6347",
+                        horizontal=True 
+                    )
                     
                 else:
                     st.write("尚無資料")
