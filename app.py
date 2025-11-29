@@ -275,7 +275,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 設定1: 預設
+            # 使用 V20 經典設定 (無強制寬度)
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -284,7 +284,6 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 設定2: 隱藏類型
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -302,17 +301,16 @@ else:
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
                 if not df_food.empty:
                     df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
-                    # 統計資料
                     stats = df_food.groupby('Date')['Val'].sum().reset_index().sort_values('Date', ascending=False)
                     stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
                     stats.columns = ['日期', '總匙數', '總克數']
                     
-                    # 1. 表格：限制高度 (約顯示 10 筆)，並套用 Small 寬度
+                    # 1. 表格 (高度400，約顯示10筆)
                     st.dataframe(
                         stats, 
                         use_container_width=True, 
                         hide_index=True, 
-                        height=400, # 高度限制
+                        height=400,
                         column_config={
                             "日期": st.column_config.Column(width="small"),
                             "總匙數": st.column_config.Column(width="small"),
@@ -320,20 +318,20 @@ else:
                         }
                     )
                     
-                    # 2. 圖表：橫向長條圖 (日期 Y，克數 X)，顯示最近 20 筆
+                    # 2. 圖表 (直向長條圖)
                     st.write("---")
-                    st.caption("📊 近 20 天食量統計 (日期 Y軸 / 總克數 X軸)")
+                    st.caption("📈 近 20 天食量趨勢")
                     
-                    # 取前 20 筆 (因為 stats 已經是日期從新到舊排序，所以 head(20) 就是最新的 20 天)
-                    chart_data = stats.head(20)
+                    # 篩選最近 20 筆，並依日期排序(舊->新)以便畫圖
+                    chart_data = stats.head(20).sort_values('日期', ascending=True)
                     
-                    # 畫圖：horizontal=True 會讓 X/Y 軸互換 (數值變 X 軸，類別變 Y 軸)
+                    # 使用 st.bar_chart 畫直向圖 (X=日期, Y=總克數)
+                    # 這樣就是「往上長」的樣子了！
                     st.bar_chart(
                         chart_data, 
-                        x="總克數", 
-                        y="日期", 
-                        color="#FF6347",
-                        horizontal=True 
+                        x="日期", 
+                        y="總克數", 
+                        color="#FF6347" 
                     )
                     
                 else:
