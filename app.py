@@ -13,19 +13,17 @@ SHEET_URL = st.secrets["private_sheet_url"]
 SPOON_TO_GRAM = 11  # 1匙 = 11克
 HOME_IMAGE_PATH = "home_cat.jpg" # 照片檔名
 
-# --- 【優化重點】連接 Google Sheets 函式 ---
-# 加入 @st.cache_resource 裝飾器
-# 這表示：這個連線動作只做一次，之後就記住連線狀態，不用每次都重新登入 Google
+# --- 連接 Google Sheets 函式 (含快取加速) ---
 @st.cache_resource
 def init_connection():
-    """建立與 Google Sheets 的連線 (只執行一次)"""
+    """建立與 Google Sheets 的連線 (只執行一次，加速用)"""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
     return client
 
-# 讀取資料的函式 (這個不快取，確保資料是最新的，但因為連線已建立，速度會變快)
 def get_data():
+    """讀取資料"""
     client = init_connection()
     sheet = client.open_by_url(SHEET_URL).sheet1
     data = sheet.get_all_records()
@@ -39,9 +37,8 @@ try:
     sheet, data = get_data()
     df = pd.DataFrame(data)
 except Exception as e:
-    # 這裡加入清除快取的機制，萬一連線真的斷了，讓它下次重連
-    st.cache_resource.clear()
-    st.error(f"連線逾時，請重新整理網頁。\n錯誤訊息: {e}")
+    st.cache_resource.clear() # 清除快取重試
+    st.error(f"資料庫連線失敗，請重新整理網頁。\n錯誤訊息: {e}")
     st.stop()
 
 # --- 側邊欄 ---
@@ -52,7 +49,7 @@ with st.sidebar:
     menu_options = ["🏠 主畫面"] + cat_list
     selected_option = st.selectbox("請選擇", menu_options)
     
-    # 這裡只保留選單，新增功能移到底下的 if is_home 判斷中
+    # 這裡只保留選單，新增功能移到主畫面
 
 if 'new_cat_name' in st.session_state:
     current_cat = st.session_state['new_cat_name']
@@ -73,17 +70,19 @@ if is_home:
     st.title("🐈 貓咪生活日記")
     st.write("### Welcome Home! 🐾")
     
+    # 顯示照片 (嘗試讀取)
     if os.path.exists(HOME_IMAGE_PATH):
         try:
             image = Image.open(HOME_IMAGE_PATH)
+            # 向右旋轉 90 度
             rotated_image = image.rotate(-90, expand=True)
             st.image(rotated_image, use_container_width=True, caption="我們這一家 ❤️")
         except Exception as e:
-            st.error(f"圖片讀取失敗: {e}")
+            st.error(f"圖片讀取錯誤: {e}")
     else:
-        st.info(f"請確認已將照片 `{HOME_IMAGE_PATH}` 上傳至 GitHub 的專案資料夾中。")
+        st.warning(f"找不到照片檔案 `{HOME_IMAGE_PATH}`，請確認已上傳至 GitHub。")
 
-    # 新增貓咪功能
+    # 主畫面側邊欄功能
     with st.sidebar:
         st.divider()
         with st.expander("➕ 新增其他貓咪"):
@@ -288,7 +287,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # V34 的設定 (餵食紀錄、食量統計、體重在右邊)
+            # 設定1: 預設
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -297,6 +296,7 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
+            # 設定2: 隱藏類型 (用於 餵食紀錄/排便/用藥/其他)
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -305,6 +305,7 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
+            # 【修改】分頁順序與內容
             tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
                 ["全部", "餵食紀錄", "排便", "用藥", "其他", "食量統計", "體重"]
             )
@@ -312,7 +313,7 @@ else:
             with tab1: # 全部
                 st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_default)
 
-            with tab2: # 餵食紀錄 (流水帳)
+            with tab2: # 餵食紀錄 (流水帳) - 使用 no_type 隱藏類型
                 st.dataframe(df_display[df_display['Type']=='餵食'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
             with tab3: # 排便
@@ -351,7 +352,7 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab7: # 體重
+            with tab7: # 體重 (移到最右邊)
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
