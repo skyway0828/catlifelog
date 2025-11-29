@@ -41,16 +41,7 @@ with st.sidebar:
     menu_options = ["🏠 主畫面"] + cat_list
     selected_option = st.selectbox("請選擇", menu_options)
     
-    st.divider()
-    
-    with st.expander("➕ 新增其他貓咪"):
-        new_cat = st.text_input("輸入新名字")
-        if st.button("確認新增"):
-            if new_cat and new_cat not in cat_list:
-                st.session_state['new_cat_name'] = new_cat
-                st.success(f"準備新增 {new_cat}，請去右邊輸入第一筆紀錄！")
-                time.sleep(1)
-                st.rerun()
+    # 這裡只保留選單，新增功能移到底下的 if is_home 判斷中
 
 if 'new_cat_name' in st.session_state:
     current_cat = st.session_state['new_cat_name']
@@ -65,7 +56,7 @@ else:
         current_cat = selected_option
 
 # ==========================================
-# 🏠 顯示主畫面 (照片模式 - 向右轉90度)
+# 🏠 顯示主畫面 (照片 + 新增貓咪 + 備份)
 # ==========================================
 if is_home:
     st.title("🐈 貓咪生活日記")
@@ -81,9 +72,20 @@ if is_home:
     else:
         st.info(f"請確認已將照片 `{HOME_IMAGE_PATH}` 上傳至 GitHub 的專案資料夾中。")
 
-    # --- 側邊欄備份功能 ---
-    if not df.empty:
-        with st.sidebar:
+    # 【修改】新增貓咪功能移到這裡 (主畫面專用)
+    with st.sidebar:
+        st.divider()
+        with st.expander("➕ 新增其他貓咪"):
+            new_cat = st.text_input("輸入新名字")
+            if st.button("確認新增"):
+                if new_cat and new_cat not in cat_list:
+                    st.session_state['new_cat_name'] = new_cat
+                    st.success(f"準備新增 {new_cat}，請去右邊輸入第一筆紀錄！")
+                    time.sleep(1)
+                    st.rerun()
+
+        # 備份功能
+        if not df.empty:
             st.divider()
             st.subheader("💾 資料備份")
             csv_data = df.to_csv(index=False).encode('utf-8-sig')
@@ -275,7 +277,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 使用 V20 經典設定 (無強制寬度)
+            # 設定1: 預設
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -284,6 +286,7 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
+            # 設定2: 隱藏類型 (用於 餵食紀錄/排便/用藥/其他)
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -292,12 +295,28 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["全部", "食量統計", "體重", "排便", "用藥", "其他"])
+            # 【修改】調整 Tab 順序
+            tab_all, tab_feed_log, tab_toilet, tab_med, tab_other, tab_food_stats, tab_weight = st.tabs(
+                ["全部", "餵食紀錄", "排便", "用藥", "其他", "食量統計", "體重"]
+            )
             
-            with tab1: # 全部
+            with tab_all: # 1. 全部
                 st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_default)
 
-            with tab2: # 食量
+            with tab_feed_log: # 2. 【新增】餵食紀錄 (流水帳)
+                st.dataframe(df_display[df_display['Type']=='餵食'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
+
+            with tab_toilet: # 3. 排便
+                st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
+
+            with tab_med: # 4. 用藥
+                st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
+
+            with tab_other: # 5. 其他
+                others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
+                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
+
+            with tab_food_stats: # 6. 食量統計 (圖表)
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
                 if not df_food.empty:
                     df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
@@ -305,7 +324,6 @@ else:
                     stats['Grams'] = stats['Val'] * SPOON_TO_GRAM
                     stats.columns = ['日期', '總匙數', '總克數']
                     
-                    # 1. 表格 (高度400，約顯示10筆)
                     st.dataframe(
                         stats, 
                         use_container_width=True, 
@@ -317,42 +335,19 @@ else:
                             "總克數": st.column_config.Column(width="small")
                         }
                     )
-                    
-                    # 2. 圖表 (直向長條圖)
                     st.write("---")
                     st.caption("📈 近 20 天食量趨勢")
-                    
-                    # 篩選最近 20 筆，並依日期排序(舊->新)以便畫圖
                     chart_data = stats.head(20).sort_values('日期', ascending=True)
-                    
-                    # 使用 st.bar_chart 畫直向圖 (X=日期, Y=總克數)
-                    # 這樣就是「往上長」的樣子了！
-                    st.bar_chart(
-                        chart_data, 
-                        x="日期", 
-                        y="總克數", 
-                        color="#FF6347" 
-                    )
-                    
+                    st.bar_chart(chart_data, x="日期", y="總克數", color="#FF6347") 
                 else:
                     st.write("尚無資料")
 
-            with tab3: # 體重
+            with tab_weight: # 7. 體重 (移到最右邊)
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
                     chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
                     st.line_chart(chart_df, x='Date', y='WeightNum')
-
-            with tab4: # 排便
-                st.dataframe(df_display[df_display['Type']=='排便'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
-
-            with tab5: # 用藥
-                st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
-
-            with tab6: # 其他
-                others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
-                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
         
         else:
             st.info("這位主子還沒有紀錄喔，趕快輸入第一筆吧！")
