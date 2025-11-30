@@ -7,7 +7,7 @@ import time
 import pytz
 import os
 from PIL import Image
-import altair as alt # 🔥【新增】引入進階繪圖套件
+import altair as alt
 
 # --- 設定 ---
 SHEET_URL = st.secrets["private_sheet_url"]
@@ -286,7 +286,6 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 設定
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -323,7 +322,7 @@ else:
                 others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
                 st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab6: # 食量統計 (圖表)
+            with tab6: # 食量統計
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
                 if not df_food.empty:
                     df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
@@ -349,26 +348,25 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab7: # 體重 (🔥 更新為 Altair 進階圖表)
+            with tab7: # 體重
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
                     chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
                     
-                    # 使用 Altair 繪製
                     st.write("---")
-                    st.caption("📈 體重趨勢圖 (5kg - 13kg)")
+                    st.caption("📈 體重趨勢圖 (5kg - 12kg)")
                     
-                    # 設定 Y 軸範圍與刻度
+                    # 🔥【修改】Y軸範圍設定為 5 - 12
                     chart = alt.Chart(chart_df).mark_line(point=True, color='#2E86C1').encode(
                         x=alt.X('Date', title='日期'),
                         y=alt.Y('WeightNum', 
                                 title='體重 (kg)', 
-                                scale=alt.Scale(domain=[5, 13], zero=False), # 🔥 Y軸範圍 5-13
-                                axis=alt.Axis(tickMinStep=0.5) # 🔥 刻度間隔 0.5
+                                scale=alt.Scale(domain=[5, 12], zero=False), 
+                                axis=alt.Axis(tickMinStep=0.5)
                         ),
                         tooltip=['Date', 'WeightNum']
-                    ).interactive() # 讓圖表可以縮放互動
+                    ).interactive()
                     
                     st.altair_chart(chart, use_container_width=True)
         
