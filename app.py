@@ -7,6 +7,7 @@ import time
 import pytz
 import os
 from PIL import Image
+import altair as alt # 🔥【新增】引入進階繪圖套件
 
 # --- 設定 ---
 SHEET_URL = st.secrets["private_sheet_url"]
@@ -70,11 +71,9 @@ if is_home:
     st.title("🐈 貓咪生活日記")
     st.write("### Welcome Home! 🐾")
     
-    # 顯示照片 (嘗試讀取)
     if os.path.exists(HOME_IMAGE_PATH):
         try:
             image = Image.open(HOME_IMAGE_PATH)
-            # 向右旋轉 90 度
             rotated_image = image.rotate(-90, expand=True)
             st.image(rotated_image, use_container_width=True, caption="我們這一家 ❤️")
         except Exception as e:
@@ -287,7 +286,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
-            # 設定1: 預設
+            # 設定
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -296,7 +295,6 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 設定2: 隱藏類型 (用於 餵食紀錄/排便/用藥/其他)
             col_config_no_type = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -305,7 +303,6 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 【修改】分頁順序與內容
             tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
                 ["全部", "餵食紀錄", "排便", "用藥", "其他", "食量統計", "體重"]
             )
@@ -313,7 +310,7 @@ else:
             with tab1: # 全部
                 st.dataframe(df_display, use_container_width=True, hide_index=True, column_config=col_config_default)
 
-            with tab2: # 餵食紀錄 (流水帳) - 使用 no_type 隱藏類型
+            with tab2: # 餵食紀錄
                 st.dataframe(df_display[df_display['Type']=='餵食'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
             with tab3: # 排便
@@ -352,12 +349,28 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab7: # 體重 (移到最右邊)
+            with tab7: # 體重 (🔥 更新為 Altair 進階圖表)
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
                     chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
-                    st.line_chart(chart_df, x='Date', y='WeightNum')
+                    
+                    # 使用 Altair 繪製
+                    st.write("---")
+                    st.caption("📈 體重趨勢圖 (5kg - 13kg)")
+                    
+                    # 設定 Y 軸範圍與刻度
+                    chart = alt.Chart(chart_df).mark_line(point=True, color='#2E86C1').encode(
+                        x=alt.X('Date', title='日期'),
+                        y=alt.Y('WeightNum', 
+                                title='體重 (kg)', 
+                                scale=alt.Scale(domain=[5, 13], zero=False), # 🔥 Y軸範圍 5-13
+                                axis=alt.Axis(tickMinStep=0.5) # 🔥 刻度間隔 0.5
+                        ),
+                        tooltip=['Date', 'WeightNum']
+                    ).interactive() # 讓圖表可以縮放互動
+                    
+                    st.altair_chart(chart, use_container_width=True)
         
         else:
             st.info("這位主子還沒有紀錄喔，趕快輸入第一筆吧！")
