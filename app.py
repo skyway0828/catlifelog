@@ -17,40 +17,60 @@ HOME_IMAGE_PATH = "home_cat.jpg"
 # --- 連接 Google Sheets 函式 ---
 @st.cache_resource
 def init_connection():
+    """建立連線 (只執行一次，省資源)"""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
     return client
 
-def get_data():
+# 🔥【修改】取得工作表物件 (用來寫入資料) - 不快取
+def get_sheet_objects():
+    client = init_connection()
+    spreadsheet = client.open_by_url(SHEET_URL)
+    sheet1 = spreadsheet.sheet1
+    try:
+        sheet_med = spreadsheet.worksheet("Medical_Logs")
+    except:
+        sheet_med = None
+    return sheet1, sheet_med
+
+# 🔥【修改】讀取數據 (加入 TTL=5秒 快取) - 解決 429 錯誤的關鍵！
+@st.cache_data(ttl=5)
+def fetch_data_values():
+    """每 5 秒才真的去 Google 抓一次資料，其他時間用快取"""
     client = init_connection()
     spreadsheet = client.open_by_url(SHEET_URL)
     
-    # 讀取 Sheet1 (生活紀錄)
-    sheet1 = spreadsheet.sheet1
-    data1 = sheet1.get_all_records()
+    # 讀生活紀錄
+    data1 = spreadsheet.sheet1.get_all_records()
     
-    # 讀取 Medical_Logs (病歷紀錄)
+    # 讀病歷紀錄
     try:
-        sheet_med = spreadsheet.worksheet("Medical_Logs")
-        data_med = sheet_med.get_all_records()
+        data_med = spreadsheet.worksheet("Medical_Logs").get_all_records()
     except:
-        sheet_med = None
         data_med = []
-
-    return sheet1, data1, sheet_med, data_med
+        
+    return data1, data_med
 
 # --- 介面開始 ---
 st.set_page_config(page_title="貓咪生活日記", page_icon="🐾", layout="wide")
 
-# 嘗試連線
+# 嘗試連線與讀取
 try:
-    sheet, data, sheet_med, data_med = get_data()
+    # 1. 取得操作用的 sheet 物件
+    sheet, sheet_med = get_sheet_objects()
+    
+    # 2. 取得顯示用的 data (有快取保護)
+    data, data_med = fetch_data_values()
+    
     df = pd.DataFrame(data)
     df_med = pd.DataFrame(data_med)
+
 except Exception as e:
+    # 發生錯誤時清除快取，讓使用者可以重試
+    st.cache_data.clear()
     st.cache_resource.clear()
-    st.error(f"資料庫連線失敗，請重新整理網頁。\n錯誤訊息: {e}")
+    st.error(f"資料庫連線忙碌中，請稍等幾秒後再試。\n錯誤訊息: {e}")
     st.stop()
 
 # --- 側邊欄 ---
@@ -117,9 +137,7 @@ else:
     
     main_tab1, main_tab2 = st.tabs(["📝 生活紀錄", "🏥 病歷/健檢"])
 
-    # ----------------------------------------------------
-    # TAB 1: 生活紀錄
-    # ----------------------------------------------------
+    # --- TAB 1: 生活紀錄 ---
     with main_tab1:
         tw_tz = pytz.timezone('Asia/Taipei')
         now_tw = datetime.now(tw_tz)
@@ -154,6 +172,8 @@ else:
                 row_data = [current_cat, date_input.strftime("%Y-%m-%d"), time_str, record_type, final_content, note_val]
                 with st.spinner('寫入中...'):
                     sheet.append_row(row_data)
+                    # 🔥【關鍵】寫入後立刻清除快取，確保下次讀取是新的
+                    st.cache_data.clear()
                     st.success("✅ 成功！")
                     time.sleep(1)
                     st.rerun()
@@ -202,7 +222,7 @@ else:
                     st.error(f"⚖️ 體重: {weights[0] if weights else '(無)'}")
                     st.info(f"📝 其他: {', '.join(others_list) if others_list else '(無)'}")
 
-                # --- 管理與修改 (生活紀錄) ---
+                # --- 管理與修改 ---
                 st.divider()
                 with st.expander("🛠️ 管理生活紀錄 (修改/刪除)", expanded=False):
                     edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=10, max_value=1000, value=20, step=10, key="life_limit")
@@ -228,6 +248,8 @@ else:
                                                 break
                                         if row_to_delete:
                                             sheet.delete_rows(row_to_delete)
+                                            # 🔥 清除快取
+                                            st.cache_data.clear()
                                             st.success("已刪除！")
                                             time.sleep(1)
                                             st.rerun()
@@ -244,6 +266,8 @@ else:
                                         if row_to_update:
                                             sheet.update_cell(row_to_update, 5, new_content_edit)
                                             sheet.update_cell(row_to_update, 6, new_note_edit)
+                                            # 🔥 清除快取
+                                            st.cache_data.clear()
                                             st.success("更新成功！")
                                             time.sleep(1)
                                             st.rerun()
@@ -284,15 +308,12 @@ else:
             else:
                 st.info("尚無紀錄")
 
-    # ----------------------------------------------------
-    # TAB 2: 病歷/健檢 (含修改功能)
-    # ----------------------------------------------------
+    # --- TAB 2: 病歷/健檢 ---
     with main_tab2:
         if sheet_med is None:
-            st.error("⚠️ 尚未建立 `Medical_Logs` 分頁，請先去 Google Sheet 新增！")
+            st.error("⚠️ 尚未建立 `Medical_Logs` 分頁")
         else:
             st.subheader("🏥 新增病歷資料")
-            
             m_col1, m_col2 = st.columns(2)
             with m_col1:
                 med_date = st.date_input("就診日期", datetime.now(), key="med_date")
@@ -311,41 +332,35 @@ else:
                     med_row = [current_cat, med_date.strftime("%Y-%m-%d"), med_cat, med_weight, med_hospital, med_detail, med_link]
                     with st.spinner('儲存中...'):
                         sheet_med.append_row(med_row)
+                        # 🔥 清除快取
+                        st.cache_data.clear()
                         st.success("病歷已歸檔！")
                         time.sleep(1)
                         st.rerun()
 
             st.divider()
-            
             if not df_med.empty:
                 my_med_records = df_med[df_med['Name'] == current_cat].copy()
-                
                 if not my_med_records.empty:
-                    # 排序 (新 -> 舊)
                     my_med_records = my_med_records.sort_values(by='Date', ascending=False)
                     
-                    # 🔥【新增】管理病歷區塊
-                    with st.expander("🛠️ 修改或刪除病歷 (點此展開)", expanded=False):
+                    with st.expander("🛠️ 修改或刪除病歷", expanded=False):
                         med_options = my_med_records.apply(lambda x: f"{x['Date']} | {x['Category']} | {x['Hospital']}", axis=1).tolist()
                         sel_med = st.selectbox("選擇要操作的病歷:", med_options, key="med_sel")
-                        
                         if sel_med:
                             target_med = my_med_records[my_med_records.apply(lambda x: f"{x['Date']} | {x['Category']} | {x['Hospital']}", axis=1) == sel_med].iloc[0]
-                            
-                            # 編輯欄位
                             me1, me2 = st.columns(2)
                             with me1:
-                                new_med_date = st.text_input("日期 (YYYY-MM-DD)", value=target_med['Date'], key="me_date")
+                                new_med_date = st.text_input("日期", value=target_med['Date'], key="me_date")
                                 new_med_cat = st.text_input("類別", value=target_med['Category'], key="me_cat")
                                 new_med_w = st.text_input("體重", value=target_med['Weight'], key="me_w")
                             with me2:
                                 new_med_hos = st.text_input("醫院", value=target_med['Hospital'], key="me_hos")
                                 new_med_link = st.text_input("連結", value=target_med['Link'], key="me_link")
                             new_med_det = st.text_area("詳細內容", value=target_med['Details'], height=100, key="me_det")
-                            
                             mb1, mb2 = st.columns([1, 1])
                             with mb1:
-                                if st.button("🗑️ 刪除病歷", type="primary", key="med_del"):
+                                if st.button("🗑️ 刪除", type="primary", key="med_del"):
                                     with st.spinner("刪除中..."):
                                         try:
                                             row_to_del = None
@@ -355,12 +370,14 @@ else:
                                                     break
                                             if row_to_del:
                                                 sheet_med.delete_rows(row_to_del)
+                                                # 🔥 清除快取
+                                                st.cache_data.clear()
                                                 st.success("已刪除！")
                                                 time.sleep(1)
                                                 st.rerun()
                                         except: st.error("刪除失敗")
                             with mb2:
-                                if st.button("✏️ 更新病歷", key="med_upd"):
+                                if st.button("✏️ 更新", key="med_upd"):
                                     with st.spinner("更新中..."):
                                         try:
                                             row_to_upd = None
@@ -369,16 +386,14 @@ else:
                                                     row_to_upd = i + 2
                                                     break
                                             if row_to_upd:
-                                                # 更新整列 (Name, Date, Category, Weight, Hospital, Details, Link)
-                                                new_values = [current_cat, new_med_date, new_med_cat, new_med_w, new_med_hos, new_med_det, new_med_link]
-                                                # 這裡我們用 update_cell 一個一個更新比較穩 (row, col)
-                                                # Name(1) 不變
                                                 sheet_med.update_cell(row_to_upd, 2, new_med_date)
                                                 sheet_med.update_cell(row_to_upd, 3, new_med_cat)
                                                 sheet_med.update_cell(row_to_upd, 4, new_med_w)
                                                 sheet_med.update_cell(row_to_upd, 5, new_med_hos)
                                                 sheet_med.update_cell(row_to_upd, 6, new_med_det)
                                                 sheet_med.update_cell(row_to_upd, 7, new_med_link)
+                                                # 🔥 清除快取
+                                                st.cache_data.clear()
                                                 st.success("更新成功！")
                                                 time.sleep(1)
                                                 st.rerun()
