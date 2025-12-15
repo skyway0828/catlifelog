@@ -11,66 +11,48 @@ import altair as alt
 
 # --- 設定 ---
 SHEET_URL = st.secrets["private_sheet_url"]
-SPOON_TO_GRAM = 11  # 1匙 = 11克
-HOME_IMAGE_PATH = "home_cat.jpg" 
+SPOON_TO_GRAM = 11
+HOME_IMAGE_PATH = "home_cat.jpg"
 
-# --- 連接 Google Sheets 函式 ---
+# --- 1. 連接 Google Sheets (只做一次) ---
 @st.cache_resource
 def init_connection():
-    """建立連線 (只執行一次，省資源)"""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
     return client
 
-# 🔥【修改】取得工作表物件 (用來寫入資料) - 不快取
-def get_sheet_objects():
+# --- 2. 讀取生活紀錄 (啟動時只讀這個) ---
+@st.cache_data(ttl=5)
+def get_life_data():
+    client = init_connection()
+    sheet = client.open_by_url(SHEET_URL).sheet1
+    data = sheet.get_all_records()
+    return sheet, data
+
+# --- 3. 讀取病歷資料 (點擊分頁才讀這個) ---
+@st.cache_data(ttl=5)
+def get_medical_data():
     client = init_connection()
     spreadsheet = client.open_by_url(SHEET_URL)
-    sheet1 = spreadsheet.sheet1
     try:
         sheet_med = spreadsheet.worksheet("Medical_Logs")
+        data_med = sheet_med.get_all_records()
     except:
         sheet_med = None
-    return sheet1, sheet_med
-
-# 🔥【修改】讀取數據 (加入 TTL=5秒 快取) - 解決 429 錯誤的關鍵！
-@st.cache_data(ttl=5)
-def fetch_data_values():
-    """每 5 秒才真的去 Google 抓一次資料，其他時間用快取"""
-    client = init_connection()
-    spreadsheet = client.open_by_url(SHEET_URL)
-    
-    # 讀生活紀錄
-    data1 = spreadsheet.sheet1.get_all_records()
-    
-    # 讀病歷紀錄
-    try:
-        data_med = spreadsheet.worksheet("Medical_Logs").get_all_records()
-    except:
         data_med = []
-        
-    return data1, data_med
+    return sheet_med, data_med
 
 # --- 介面開始 ---
 st.set_page_config(page_title="貓咪生活日記", page_icon="🐾", layout="wide")
 
-# 嘗試連線與讀取
+# 先讀取主要資料 (生活紀錄)，讓選單可以先跑出來
 try:
-    # 1. 取得操作用的 sheet 物件
-    sheet, sheet_med = get_sheet_objects()
-    
-    # 2. 取得顯示用的 data (有快取保護)
-    data, data_med = fetch_data_values()
-    
+    sheet, data = get_life_data()
     df = pd.DataFrame(data)
-    df_med = pd.DataFrame(data_med)
-
 except Exception as e:
-    # 發生錯誤時清除快取，讓使用者可以重試
     st.cache_data.clear()
-    st.cache_resource.clear()
-    st.error(f"資料庫連線忙碌中，請稍等幾秒後再試。\n錯誤訊息: {e}")
+    st.error("連線忙碌中，請重新整理。")
     st.stop()
 
 # --- 側邊欄 ---
@@ -79,7 +61,7 @@ with st.sidebar:
     cat_list = df['Name'].unique().tolist() if not df.empty else []
     menu_options = ["🏠 主畫面"] + cat_list
     selected_option = st.selectbox("請選擇", menu_options)
-    
+
 if 'new_cat_name' in st.session_state:
     current_cat = st.session_state['new_cat_name']
     del st.session_state['new_cat_name']
@@ -97,7 +79,6 @@ else:
 # ==========================================
 if is_home:
     st.title("🐈 貓咪生活日記")
-    st.write("### Welcome Home! 🐾")
     
     if os.path.exists(HOME_IMAGE_PATH):
         try:
@@ -117,17 +98,26 @@ if is_home:
                     st.success(f"準備新增 {new_cat}")
                     time.sleep(1)
                     st.rerun()
+        
+        # 備份功能 (只有在需要備份時才去抓病歷資料，加快主畫面顯示)
         if not df.empty:
             st.divider()
             st.subheader("💾 資料備份")
             csv_data = df.to_csv(index=False).encode('utf-8-sig')
             tw_tz_backup = pytz.timezone('Asia/Taipei')
             now_str = datetime.now(tw_tz_backup).strftime("%Y%m%d")
+            
+            # 生活紀錄備份
             st.download_button(label="📥 下載生活紀錄", data=csv_data, file_name=f"貓咪日記_{now_str}.csv", mime="text/csv")
             
-            if not df_med.empty:
-                csv_med = df_med.to_csv(index=False).encode('utf-8-sig')
-                st.download_button(label="📥 下載病歷資料", data=csv_med, file_name=f"貓咪病歷_{now_str}.csv", mime="text/csv")
+            # 病歷備份 (按鈕按下去前不讀取，或是做成另一個按鈕)
+            # 為了效能，這裡我們做個簡單的檢查
+            if st.checkbox("也顯示病歷備份按鈕"):
+                _, data_med_backup = get_medical_data()
+                df_med_backup = pd.DataFrame(data_med_backup)
+                if not df_med_backup.empty:
+                    csv_med = df_med_backup.to_csv(index=False).encode('utf-8-sig')
+                    st.download_button(label="📥 下載病歷資料", data=csv_med, file_name=f"貓咪病歷_{now_str}.csv", mime="text/csv")
 
 # ==========================================
 # 🐾 貓咪個人頁面
@@ -137,7 +127,9 @@ else:
     
     main_tab1, main_tab2 = st.tabs(["📝 生活紀錄", "🏥 病歷/健檢"])
 
-    # --- TAB 1: 生活紀錄 ---
+    # ----------------------------------------------------
+    # TAB 1: 生活紀錄 (使用已讀取的 data)
+    # ----------------------------------------------------
     with main_tab1:
         tw_tz = pytz.timezone('Asia/Taipei')
         now_tw = datetime.now(tw_tz)
@@ -172,8 +164,7 @@ else:
                 row_data = [current_cat, date_input.strftime("%Y-%m-%d"), time_str, record_type, final_content, note_val]
                 with st.spinner('寫入中...'):
                     sheet.append_row(row_data)
-                    # 🔥【關鍵】寫入後立刻清除快取，確保下次讀取是新的
-                    st.cache_data.clear()
+                    st.cache_data.clear() # 清除快取，下次讀取最新
                     st.success("✅ 成功！")
                     time.sleep(1)
                     st.rerun()
@@ -222,7 +213,6 @@ else:
                     st.error(f"⚖️ 體重: {weights[0] if weights else '(無)'}")
                     st.info(f"📝 其他: {', '.join(others_list) if others_list else '(無)'}")
 
-                # --- 管理與修改 ---
                 st.divider()
                 with st.expander("🛠️ 管理生活紀錄 (修改/刪除)", expanded=False):
                     edit_limit = st.number_input("欲載入最近幾筆紀錄？", min_value=10, max_value=1000, value=20, step=10, key="life_limit")
@@ -248,7 +238,6 @@ else:
                                                 break
                                         if row_to_delete:
                                             sheet.delete_rows(row_to_delete)
-                                            # 🔥 清除快取
                                             st.cache_data.clear()
                                             st.success("已刪除！")
                                             time.sleep(1)
@@ -266,7 +255,6 @@ else:
                                         if row_to_update:
                                             sheet.update_cell(row_to_update, 5, new_content_edit)
                                             sheet.update_cell(row_to_update, 6, new_note_edit)
-                                            # 🔥 清除快取
                                             st.cache_data.clear()
                                             st.success("更新成功！")
                                             time.sleep(1)
@@ -308,8 +296,14 @@ else:
             else:
                 st.info("尚無紀錄")
 
-    # --- TAB 2: 病歷/健檢 ---
+    # ----------------------------------------------------
+    # TAB 2: 病歷/健檢 (點擊時才讀取資料)
+    # ----------------------------------------------------
     with main_tab2:
+        # 🔥【關鍵】這裡才呼叫讀取病歷，實現 Lazy Loading
+        sheet_med, data_med = get_medical_data()
+        df_med = pd.DataFrame(data_med)
+
         if sheet_med is None:
             st.error("⚠️ 尚未建立 `Medical_Logs` 分頁")
         else:
@@ -332,7 +326,7 @@ else:
                     med_row = [current_cat, med_date.strftime("%Y-%m-%d"), med_cat, med_weight, med_hospital, med_detail, med_link]
                     with st.spinner('儲存中...'):
                         sheet_med.append_row(med_row)
-                        # 🔥 清除快取
+                        # 🔥 清除病歷快取
                         st.cache_data.clear()
                         st.success("病歷已歸檔！")
                         time.sleep(1)
@@ -370,7 +364,6 @@ else:
                                                     break
                                             if row_to_del:
                                                 sheet_med.delete_rows(row_to_del)
-                                                # 🔥 清除快取
                                                 st.cache_data.clear()
                                                 st.success("已刪除！")
                                                 time.sleep(1)
@@ -392,7 +385,6 @@ else:
                                                 sheet_med.update_cell(row_to_upd, 5, new_med_hos)
                                                 sheet_med.update_cell(row_to_upd, 6, new_med_det)
                                                 sheet_med.update_cell(row_to_upd, 7, new_med_link)
-                                                # 🔥 清除快取
                                                 st.cache_data.clear()
                                                 st.success("更新成功！")
                                                 time.sleep(1)
