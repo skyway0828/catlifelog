@@ -11,19 +11,18 @@ import altair as alt
 
 # --- 設定 ---
 SHEET_URL = st.secrets["private_sheet_url"]
-SPOON_TO_GRAM = 11  # 1匙 = 11克
-HOME_IMAGE_PATH = "home_cat.jpg" 
+SPOON_TO_GRAM = 11
+HOME_IMAGE_PATH = "home_cat.jpg"
 
 # --- 連接 Google Sheets 函式 ---
 @st.cache_resource
 def init_connection():
-    """建立連線 (只執行一次)"""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
     return client
 
-# --- 讀取生活紀錄 (啟動時執行) ---
+# --- 讀取生活紀錄 ---
 @st.cache_data(ttl=5)
 def get_life_data():
     client = init_connection()
@@ -31,7 +30,7 @@ def get_life_data():
     data = sheet.get_all_records()
     return sheet, data
 
-# --- 讀取病歷資料 (手動觸發時才執行) ---
+# --- 讀取病歷資料 ---
 @st.cache_data(ttl=5)
 def get_medical_data():
     client = init_connection()
@@ -47,7 +46,6 @@ def get_medical_data():
 # --- 介面開始 ---
 st.set_page_config(page_title="貓咪生活日記", page_icon="🐾", layout="wide")
 
-# 1. 啟動時只讀取生活紀錄 (速度最快)
 try:
     sheet, data = get_life_data()
     df = pd.DataFrame(data)
@@ -62,7 +60,7 @@ with st.sidebar:
     cat_list = df['Name'].unique().tolist() if not df.empty else []
     menu_options = ["🏠 主畫面"] + cat_list
     selected_option = st.selectbox("請選擇", menu_options)
-    
+
 if 'new_cat_name' in st.session_state:
     current_cat = st.session_state['new_cat_name']
     del st.session_state['new_cat_name']
@@ -80,7 +78,6 @@ else:
 # ==========================================
 if is_home:
     st.title("🐈 貓咪生活日記")
-    st.write("### Welcome Home! 🐾")
     
     if os.path.exists(HOME_IMAGE_PATH):
         try:
@@ -100,21 +97,50 @@ if is_home:
                     st.success(f"準備新增 {new_cat}")
                     time.sleep(1)
                     st.rerun()
+        
+        # 備份功能
         if not df.empty:
             st.divider()
             st.subheader("💾 資料備份")
-            csv_data = df.to_csv(index=False).encode('utf-8-sig')
+            
+            # 定義時間字串
             tw_tz_backup = pytz.timezone('Asia/Taipei')
             now_str = datetime.now(tw_tz_backup).strftime("%Y%m%d")
+
+            # 1. 生活紀錄 (資料已在 df 中，直接顯示下載鈕)
+            csv_data = df.to_csv(index=False).encode('utf-8-sig')
             st.download_button(label="📥 下載生活紀錄", data=csv_data, file_name=f"貓咪日記_{now_str}.csv", mime="text/csv")
             
-            # 病歷備份按鈕 (懶加載)
-            if st.checkbox("顯示病歷備份選項"):
-                _, data_med_backup = get_medical_data()
-                df_med_backup = pd.DataFrame(data_med_backup)
-                if not df_med_backup.empty:
-                    csv_med = df_med_backup.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button(label="📥 下載病歷資料", data=csv_med, file_name=f"貓咪病歷_{now_str}.csv", mime="text/csv")
+            # 2. 病歷備份 (兩階段按鈕：先按準備 -> 再顯示下載)
+            # 使用 session_state 來記住「是否已經讀取過病歷資料」
+            if 'med_backup_csv' not in st.session_state:
+                st.session_state['med_backup_csv'] = None
+
+            if st.session_state['med_backup_csv'] is None:
+                # 階段一：顯示「讀取」按鈕
+                if st.button("☁️ 讀取並建立病歷備份"):
+                    with st.spinner("正在從雲端讀取病歷..."):
+                        _, data_med_backup = get_medical_data()
+                        df_med_backup = pd.DataFrame(data_med_backup)
+                        if not df_med_backup.empty:
+                            st.session_state['med_backup_csv'] = df_med_backup.to_csv(index=False).encode('utf-8-sig')
+                        else:
+                            st.warning("目前無病歷資料")
+                            st.session_state['med_backup_csv'] = False # 標記為無資料
+                    st.rerun()
+            
+            elif st.session_state['med_backup_csv'] is not False:
+                # 階段二：資料已準備好，顯示「下載」按鈕
+                st.download_button(
+                    label="📥 下載病歷資料", 
+                    data=st.session_state['med_backup_csv'], 
+                    file_name=f"貓咪病歷_{now_str}.csv", 
+                    mime="text/csv"
+                )
+                # 稍微加個重置的小字，讓使用者可以重新整理
+                if st.button("🔄 重新讀取"):
+                    st.session_state['med_backup_csv'] = None
+                    st.rerun()
 
 # ==========================================
 # 🐾 貓咪個人頁面
@@ -124,9 +150,6 @@ else:
     
     main_tab1, main_tab2 = st.tabs(["📝 生活紀錄", "🏥 病歷/健檢"])
 
-    # ----------------------------------------------------
-    # TAB 1: 生活紀錄 (直接顯示，不延遲)
-    # ----------------------------------------------------
     with main_tab1:
         tw_tz = pytz.timezone('Asia/Taipei')
         now_tw = datetime.now(tw_tz)
@@ -293,13 +316,8 @@ else:
             else:
                 st.info("尚無紀錄")
 
-    # ----------------------------------------------------
-    # TAB 2: 病歷/健檢 (手動載入)
-    # ----------------------------------------------------
     with main_tab2:
-        # 🔥【關鍵修改】這裡加了一個開關，預設是關閉的
         if st.checkbox("✅ 載入/顯示病歷資料 (點擊後才讀取)"):
-            
             sheet_med, data_med = get_medical_data()
             df_med = pd.DataFrame(data_med)
 
@@ -325,7 +343,7 @@ else:
                         med_row = [current_cat, med_date.strftime("%Y-%m-%d"), med_cat, med_weight, med_hospital, med_detail, med_link]
                         with st.spinner('儲存中...'):
                             sheet_med.append_row(med_row)
-                            st.cache_data.clear() # 清除快取，強制重讀
+                            st.cache_data.clear()
                             st.success("病歷已歸檔！")
                             time.sleep(1)
                             st.rerun()
