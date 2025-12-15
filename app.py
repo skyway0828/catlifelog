@@ -11,8 +11,8 @@ import altair as alt
 
 # --- 設定 ---
 SHEET_URL = st.secrets["private_sheet_url"]
-SPOON_TO_GRAM = 11
-HOME_IMAGE_PATH = "home_cat.jpg"
+SPOON_TO_GRAM = 11  # 1匙 = 11克
+HOME_IMAGE_PATH = "home_cat.jpg" 
 
 # --- 連接 Google Sheets 函式 ---
 @st.cache_resource
@@ -98,49 +98,22 @@ if is_home:
                     time.sleep(1)
                     st.rerun()
         
-        # 備份功能
+        # 備份功能 (只保留生活紀錄備份，簡化版面)
         if not df.empty:
             st.divider()
             st.subheader("💾 資料備份")
             
-            # 定義時間字串
             tw_tz_backup = pytz.timezone('Asia/Taipei')
             now_str = datetime.now(tw_tz_backup).strftime("%Y%m%d")
 
-            # 1. 生活紀錄 (資料已在 df 中，直接顯示下載鈕)
+            # 生活紀錄備份按鈕
             csv_data = df.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(label="📥 下載生活紀錄", data=csv_data, file_name=f"貓咪日記_{now_str}.csv", mime="text/csv")
-            
-            # 2. 病歷備份 (兩階段按鈕：先按準備 -> 再顯示下載)
-            # 使用 session_state 來記住「是否已經讀取過病歷資料」
-            if 'med_backup_csv' not in st.session_state:
-                st.session_state['med_backup_csv'] = None
-
-            if st.session_state['med_backup_csv'] is None:
-                # 階段一：顯示「讀取」按鈕
-                if st.button("☁️ 讀取並建立病歷備份"):
-                    with st.spinner("正在從雲端讀取病歷..."):
-                        _, data_med_backup = get_medical_data()
-                        df_med_backup = pd.DataFrame(data_med_backup)
-                        if not df_med_backup.empty:
-                            st.session_state['med_backup_csv'] = df_med_backup.to_csv(index=False).encode('utf-8-sig')
-                        else:
-                            st.warning("目前無病歷資料")
-                            st.session_state['med_backup_csv'] = False # 標記為無資料
-                    st.rerun()
-            
-            elif st.session_state['med_backup_csv'] is not False:
-                # 階段二：資料已準備好，顯示「下載」按鈕
-                st.download_button(
-                    label="📥 下載病歷資料", 
-                    data=st.session_state['med_backup_csv'], 
-                    file_name=f"貓咪病歷_{now_str}.csv", 
-                    mime="text/csv"
-                )
-                # 稍微加個重置的小字，讓使用者可以重新整理
-                if st.button("🔄 重新讀取"):
-                    st.session_state['med_backup_csv'] = None
-                    st.rerun()
+            st.download_button(
+                label="📥 下載紀錄 (Excel)", 
+                data=csv_data, 
+                file_name=f"貓咪日記_{now_str}.csv", 
+                mime="text/csv"
+            )
 
 # ==========================================
 # 🐾 貓咪個人頁面
