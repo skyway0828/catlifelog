@@ -128,14 +128,15 @@ else:
 
     time_str = f"{hour_val}:{min_val}"
 
-    type_options = ["餵食", "餵藥", "體重", "排便", "其他"]
+    type_options = ["餵食", "餵藥", "體重", "排便", "其他", "注意"]
     record_type = st.radio("類型", type_options, horizontal=True, label_visibility="collapsed") 
 
     help_text = ""
     if record_type == "餵食": help_text = "輸入湯匙數 (如 0.5)"
     elif record_type == "體重": help_text = "輸入公斤數 (如 5.2)"
     elif record_type == "餵藥": help_text = "輸入藥名 (如 抗生素)"
-    elif record_type == "其他": help_text = "輸入標題 (如 剪指甲、吐毛)"
+    elif record_type == "其他": help_text = "輸入標題 (如 剪指甲、罐頭)"
+    elif record_type == "其他": help_text = "輸入標題 (如 吐毛)"
 
     content_val = st.text_input("內容 / 數值", placeholder=help_text)
     note_val = st.text_input("備註說明 (選填)")
@@ -197,6 +198,7 @@ else:
                 elif t == "餵藥": meds.append(f"{row['Time']} {c}{note_suffix}")
                 elif t == "排便": toilets.append(f"{row['Time']} {c}{note_suffix}")
                 elif t == "體重": weights.append(f"{c} kg")
+                elif t == "注意" or t == "備註":
                 elif t == "其他" or t == "備註": 
                     others_list.append(f"{row['Time']} {c}{note_suffix}")
 
@@ -216,6 +218,7 @@ else:
                 st.error(f"⚖️ 體重: {weight_msg}")
                 others_msg = ", ".join(others_list) if others_list else "(無)"
                 st.info(f"📝 其他: {others_msg}")
+                st.info(f"📝 注意: {others_msg}")
 
             # --- 管理與修改 ---
             st.divider()
@@ -304,7 +307,7 @@ else:
             }
 
             tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-                ["全部", "餵食紀錄", "排便", "用藥", "其他", "食量統計", "體重"]
+                ["全部", "餵食紀錄", "排便", "用藥", "其他", "食量統計", "注意", "體重"]
             )
             
             with tab1: # 全部
@@ -322,8 +325,13 @@ else:
             with tab5: # 其他
                 others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
                 st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
+            
+            with tab6: # 注意
+                others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
+                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab6: # 食量統計 (圖表)
+
+            with tab7: # 食量統計 (圖表)
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
                 if not df_food.empty:
                     df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
@@ -349,7 +357,7 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab7: # 體重
+            with tab8: # 體重
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
