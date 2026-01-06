@@ -124,16 +124,17 @@ else:
 
     time_str = f"{hour_val}:{min_val}"
 
-    # 🔥【修改】順序調整：其他 -> 注意
-    type_options = ["餵食", "餵藥", "體重", "排便", "其他", "注意"]
+    # 🔥【修改】新增 "注意" 選項
+    type_options = ["餵食", "餵藥", "體重", "排便", "注意", "其他"]
     record_type = st.radio("類型", type_options, horizontal=True, label_visibility="collapsed") 
 
+    # 🔥【修改】新增 "注意" 的提示文字
     help_text = ""
     if record_type == "餵食": help_text = "輸入湯匙數 (如 0.5)"
     elif record_type == "體重": help_text = "輸入公斤數 (如 5.2)"
     elif record_type == "餵藥": help_text = "輸入藥名 (如 抗生素)"
-    elif record_type == "其他": help_text = "輸入雜項 (如 剪指甲、喝水、洗澡)"
     elif record_type == "注意": help_text = "輸入症狀 (如 嘔吐、精神差、拉血)"
+    elif record_type == "其他": help_text = "輸入雜項 (如 剪指甲、喝水、洗澡)"
 
     content_val = st.text_input("內容 / 數值", placeholder=help_text)
     note_val = st.text_input("備註說明 (選填)")
@@ -183,7 +184,7 @@ else:
             toilets = []
             weights = []
             others_list = []
-            notices_list = []
+            notices_list = [] # 🔥【新增】注意列表
             
             for _, row in df_today.iterrows():
                 t = row['Type']
@@ -196,9 +197,9 @@ else:
                 elif t == "餵藥": meds.append(f"{row['Time']} {c}{note_suffix}")
                 elif t == "排便": toilets.append(f"{row['Time']} {c}{note_suffix}")
                 elif t == "體重": weights.append(f"{c} kg")
+                elif t == "注意": notices_list.append(f"{row['Time']} {c}{note_suffix}") # 🔥 收集注意
                 elif t == "其他" or t == "備註": 
                     others_list.append(f"{row['Time']} {c}{note_suffix}")
-                elif t == "注意": notices_list.append(f"{row['Time']} {c}{note_suffix}")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -210,7 +211,7 @@ else:
                 st.info(f"🍖 食量: {food_msg}")
                 st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
                 
-                # 注意 (紅色)
+                # 🔥【新增】顯示注意區塊 (紅色警示)
                 notices_msg = ", ".join(notices_list) if notices_list else "(無)"
                 st.error(f"⚠️ 注意: {notices_msg}")
 
@@ -306,9 +307,9 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 🔥【修改】分頁順序：其他 -> 注意
+            # 🔥【修改】加入 "注意" 分頁
             tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
-                ["全部", "餵食紀錄", "排便", "用藥", "其他", "注意", "食量統計", "體重"]
+                ["全部", "餵食紀錄", "排便", "用藥", "注意", "其他", "食量統計", "體重"]
             )
             
             with tab1: # 全部
@@ -323,12 +324,12 @@ else:
             with tab4: # 用藥
                 st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab5: # 其他
+            with tab5: # 🔥【新增】注意
+                st.dataframe(df_display[df_display['Type']=='注意'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
+
+            with tab6: # 其他
                 others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
                 st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
-
-            with tab6: # 注意
-                st.dataframe(df_display[df_display['Type']=='注意'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
             with tab7: # 食量統計
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
