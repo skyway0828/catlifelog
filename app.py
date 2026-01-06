@@ -14,10 +14,10 @@ SHEET_URL = st.secrets["private_sheet_url"]
 SPOON_TO_GRAM = 11  # 1匙 = 11克
 HOME_IMAGE_PATH = "home_cat.jpg" # 照片檔名
 
-# --- 連接 Google Sheets 函式 ---
+# --- 連接 Google Sheets 函式 (含快取加速) ---
 @st.cache_resource
 def init_connection():
-    """建立與 Google Sheets 的連線"""
+    """建立與 Google Sheets 的連線 (只執行一次，加速用)"""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
@@ -38,7 +38,7 @@ try:
     sheet, data = get_data()
     df = pd.DataFrame(data)
 except Exception as e:
-    st.cache_resource.clear()
+    st.cache_resource.clear() # 清除快取重試
     st.error(f"資料庫連線失敗，請重新整理網頁。\n錯誤訊息: {e}")
     st.stop()
 
@@ -49,6 +49,8 @@ with st.sidebar:
     cat_list = df['Name'].unique().tolist() if not df.empty else []
     menu_options = ["🏠 主畫面"] + cat_list
     selected_option = st.selectbox("請選擇", menu_options)
+    
+    # 重啟按鈕已移除
 
 if 'new_cat_name' in st.session_state:
     current_cat = st.session_state['new_cat_name']
@@ -63,7 +65,7 @@ else:
         current_cat = selected_option
 
 # ==========================================
-# 🏠 顯示主畫面
+# 🏠 顯示主畫面 (照片 + 新增貓咪 + 備份)
 # ==========================================
 if is_home:
     st.title("🐈 貓咪生活日記")
@@ -79,6 +81,7 @@ if is_home:
     else:
         st.warning(f"找不到照片檔案 `{HOME_IMAGE_PATH}`，請確認已上傳至 GitHub。")
 
+    # 主畫面側邊欄功能
     with st.sidebar:
         st.divider()
         with st.expander("➕ 新增其他貓咪"):
@@ -90,6 +93,7 @@ if is_home:
                     time.sleep(1)
                     st.rerun()
 
+        # 備份功能
         if not df.empty:
             st.divider()
             st.subheader("💾 資料備份")
@@ -124,16 +128,14 @@ else:
 
     time_str = f"{hour_val}:{min_val}"
 
-    # 輸入選項：其他 -> 注意
-    type_options = ["餵食", "餵藥", "體重", "排便", "其他", "注意"]
+    type_options = ["餵食", "餵藥", "體重", "排便", "其他"]
     record_type = st.radio("類型", type_options, horizontal=True, label_visibility="collapsed") 
 
     help_text = ""
     if record_type == "餵食": help_text = "輸入湯匙數 (如 0.5)"
     elif record_type == "體重": help_text = "輸入公斤數 (如 5.2)"
     elif record_type == "餵藥": help_text = "輸入藥名 (如 抗生素)"
-    elif record_type == "其他": help_text = "輸入雜項 (如 剪指甲、喝水、洗澡)"
-    elif record_type == "注意": help_text = "輸入症狀 (如 嘔吐、精神差、拉血)"
+    elif record_type == "其他": help_text = "輸入標題 (如 剪指甲、吐毛)"
 
     content_val = st.text_input("內容 / 數值", placeholder=help_text)
     note_val = st.text_input("備註說明 (選填)")
@@ -183,7 +185,6 @@ else:
             toilets = []
             weights = []
             others_list = []
-            notices_list = []
             
             for _, row in df_today.iterrows():
                 t = row['Type']
@@ -198,7 +199,6 @@ else:
                 elif t == "體重": weights.append(f"{c} kg")
                 elif t == "其他" or t == "備註": 
                     others_list.append(f"{row['Time']} {c}{note_suffix}")
-                elif t == "注意": notices_list.append(f"{row['Time']} {c}{note_suffix}")
 
             c1, c2 = st.columns(2)
             with c1:
@@ -209,10 +209,6 @@ else:
                 if food_others: food_msg += f" + {','.join(food_others)}"
                 st.info(f"🍖 食量: {food_msg}")
                 st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
-                
-                # 注意 (紅色)
-                notices_msg = ", ".join(notices_list) if notices_list else "(無)"
-                st.error(f"⚠️ 注意: {notices_msg}")
 
             with c2:
                 st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
@@ -290,6 +286,7 @@ else:
             st.divider()
             st.subheader("📉 歷史紀錄")
             
+            # 設定
             col_config_default = {
                 "Date": st.column_config.Column("日期", width="small"),
                 "Time": st.column_config.Column("時間", width="small"),
@@ -306,10 +303,8 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 🔥【修改】歷史紀錄分頁順序
-            # 順序：全部 -> 餵食紀錄 -> 排便 -> 用藥 -> 食量統計 -> 其他 -> 注意 -> 體重
-            tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
-                ["全部", "餵食紀錄", "排便", "用藥", "食量統計", "其他", "注意", "體重"]
+            tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
+                ["全部", "餵食紀錄", "排便", "用藥", "其他", "食量統計", "體重"]
             )
             
             with tab1: # 全部
@@ -324,7 +319,11 @@ else:
             with tab4: # 用藥
                 st.dataframe(df_display[df_display['Type']=='餵藥'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
 
-            with tab5: # 食量統計 (移到這裡)
+            with tab5: # 其他
+                others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
+                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
+
+            with tab6: # 食量統計 (圖表)
                 df_food = df_cat[df_cat['Type'] == '餵食'].copy()
                 if not df_food.empty:
                     df_food['Val'] = pd.to_numeric(df_food['Content'], errors='coerce').fillna(0)
@@ -350,18 +349,29 @@ else:
                 else:
                     st.write("尚無資料")
 
-            with tab6: # 其他
-                others_filter = df_display[df_display['Type'].isin(['其他', '備註'])]
-                st.dataframe(others_filter, use_container_width=True, hide_index=True, column_config=col_config_no_type)
-
-            with tab7: # 注意 (放在其他後面)
-                st.dataframe(df_display[df_display['Type']=='注意'], use_container_width=True, hide_index=True, column_config=col_config_no_type)
-
-            with tab8: # 體重 (最後面)
+            with tab7: # 體重
                 st.dataframe(df_display[df_display['Type']=='體重'], use_container_width=True, hide_index=True, column_config=col_config_default)
                 if not df_display[df_display['Type']=='體重'].empty:
                     chart_df = df_display[df_display['Type']=='體重'].copy()
                     chart_df['WeightNum'] = pd.to_numeric(chart_df['Content'], errors='coerce')
                     
                     st.write("---")
-                    st.
+                    st.caption("📈 體重趨勢圖 (5kg - 12kg)")
+                    
+                    chart = alt.Chart(chart_df).mark_line(point=True, color='#2E86C1').encode(
+                        x=alt.X('Date', title='日期'),
+                        y=alt.Y('WeightNum', 
+                                title='體重 (kg)', 
+                                scale=alt.Scale(domain=[5, 12], zero=False), 
+                                axis=alt.Axis(tickMinStep=0.5)
+                        ),
+                        tooltip=['Date', 'WeightNum']
+                    ).interactive()
+                    
+                    st.altair_chart(chart, use_container_width=True)
+        
+        else:
+            st.info("這位主子還沒有紀錄喔，趕快輸入第一筆吧！")
+
+    else:
+        st.write("目前資料庫是空的，請新增第一筆資料！")
