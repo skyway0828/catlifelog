@@ -66,7 +66,7 @@ else:
 # ==========================================
 if is_home:
     # 🔥 版本號更新 v42
-    st.title("🐈 貓咪生活日記 (v42)")
+    st.title("🐈 貓咪生活日記")
     st.write("### Welcome Home! 🐾")
     
     if os.path.exists(HOME_IMAGE_PATH):
