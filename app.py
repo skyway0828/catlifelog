@@ -17,12 +17,14 @@ HOME_IMAGE_PATH = "home_cat.jpg"
 # --- 連接 Google Sheets 函式 ---
 @st.cache_resource
 def init_connection():
+    """建立與 Google Sheets 的連線"""
     creds_dict = dict(st.secrets["gcp_service_account"])
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"])
     client = gspread.authorize(creds)
     return client
 
 def get_data():
+    """讀取資料"""
     client = init_connection()
     sheet = client.open_by_url(SHEET_URL).sheet1
     data = sheet.get_all_records()
@@ -63,8 +65,8 @@ else:
 # 🏠 顯示主畫面
 # ==========================================
 if is_home:
-    # 🔥【修改】標題加上版本號，確認更新成功
-    st.title("🐈 貓咪生活日記 (v41)")
+    # 🔥 版本號更新 v42
+    st.title("🐈 貓咪生活日記 (v42)")
     st.write("### Welcome Home! 🐾")
     
     if os.path.exists(HOME_IMAGE_PATH):
@@ -122,7 +124,7 @@ else:
 
     time_str = f"{hour_val}:{min_val}"
 
-    # 🔥【修改】確認 "注意" 在列表裡
+    # 輸入選項：其他 -> 注意
     type_options = ["餵食", "餵藥", "體重", "排便", "其他", "注意"]
     record_type = st.radio("類型", type_options, horizontal=True, label_visibility="collapsed") 
 
@@ -200,6 +202,7 @@ else:
 
             c1, c2 = st.columns(2)
             with c1:
+                # 左欄：食量、用藥、其他(互換後)
                 food_msg = "(無)"
                 if food_total > 0:
                     grams = round(food_total * SPOON_TO_GRAM, 2)
@@ -208,16 +211,19 @@ else:
                 st.info(f"🍖 食量: {food_msg}")
                 st.warning(f"💊 用藥: {', '.join(meds) if meds else '(無)'}")
                 
-                # 🔥【修改】顯示注意區塊
-                notices_msg = ", ".join(notices_list) if notices_list else "(無)"
-                st.error(f"⚠️ 注意: {notices_msg}")
+                # 🔥【修改】其他移來這裡
+                others_msg = ", ".join(others_list) if others_list else "(無)"
+                st.info(f"📝 其他: {others_msg}")
 
             with c2:
+                # 右欄：排便、體重、注意(互換後)
                 st.success(f"💩 排便: {', '.join(toilets) if toilets else '(無)'}")
                 weight_msg = weights[0] if weights else "(無)"
                 st.error(f"⚖️ 體重: {weight_msg}")
-                others_msg = ", ".join(others_list) if others_list else "(無)"
-                st.info(f"📝 其他: {others_msg}")
+                
+                # 🔥【修改】注意移來這裡
+                notices_msg = ", ".join(notices_list) if notices_list else "(無)"
+                st.error(f"⚠️ 注意: {notices_msg}")
 
             # --- 管理與修改 ---
             st.divider()
@@ -304,7 +310,7 @@ else:
                 "Note": st.column_config.Column("備註", width="small")
             }
 
-            # 🔥【修改】順序調整：食量統計 -> 其他 -> 注意 -> 體重
+            # 順序：食量統計 -> 其他 -> 注意 -> 體重
             tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(
                 ["全部", "餵食紀錄", "排便", "用藥", "食量統計", "其他", "注意", "體重"]
             )
